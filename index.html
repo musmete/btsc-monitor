@@ -28,15 +28,6 @@
   .err-pill.err { background: rgba(255,255,255,0.95) !important; color: #ff3b30 !important; }
   .err-pill.warn { background: rgba(255,255,255,0.95) !important; color: #ff9500 !important; }
   .stale .live-card .val, .stale .row .value.live { opacity: 0.45; }
-  .menu-card.wip { opacity: 0.72; position: relative; }
-  .menu-card.wip:active { transform: scale(0.99); }
-  .wip-badge {
-    display: inline-block; margin-left: 6px;
-    background: #fff3e0; color: #b85400;
-    font-size: 9px; letter-spacing: .5px; font-weight: 700;
-    padding: 2px 6px; border-radius: 4px; vertical-align: middle;
-    border: 1px solid rgba(184,84,0,0.18);
-  }
 </style>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -503,28 +494,28 @@
           <div class="menu-arrow">›</div>
         </div>
 
-        <div class="menu-card wip" onclick="alert('Geçmiş & Tanı: ESP firmware henüz Mod 1 retry sayaçlarını yayınlamıyor. Sonraki firmware turunda canlılaşır.')">
+        <div class="menu-card" onclick="show('screen-history')">
           <div class="menu-icon ic-history">📜</div>
           <div class="menu-text">
-            <div class="menu-title">Geçmiş & Tanı <span class="wip-badge">YAPIM AŞAMASINDA</span></div>
+            <div class="menu-title">Geçmiş & Tanı</div>
             <div class="menu-desc">Hata kodları, retry geçmişi, sayaçlar</div>
           </div>
           <div class="menu-arrow">›</div>
         </div>
 
-        <div class="menu-card wip" onclick="alert('Yapılandırma (Mod 2 yazma): tek yönlü; ESP henüz iki-yönlü yazmayı desteklemiyor. Mod 2 yazma + retain doğrulaması firmware turunda eklenecek.')">
+        <div class="menu-card" onclick="show('screen-config')">
           <div class="menu-icon ic-config">⚙️</div>
           <div class="menu-text">
-            <div class="menu-title">Yapılandırma <span class="wip-badge">YAPIM AŞAMASINDA</span></div>
+            <div class="menu-title">Yapılandırma</div>
             <div class="menu-desc">Saha ayarları (Mod 2) — Te/Tc, gürültü, talep, kaçak</div>
           </div>
           <div class="menu-arrow">›</div>
         </div>
 
-        <div class="menu-card wip" onclick="alert('Servis Eylemi (pump-down, vakum, test): kompresör kontrol komutları henüz cihaza yazılmıyor. U1-04 kalktıktan sonraki firmware turunda eklenecek.')">
+        <div class="menu-card" onclick="show('screen-action')">
           <div class="menu-icon ic-action">🛠️</div>
           <div class="menu-text">
-            <div class="menu-title">Servis Eylemi <span class="wip-badge">YAPIM AŞAMASINDA</span></div>
+            <div class="menu-title">Servis Eylemi</div>
             <div class="menu-desc">Pump-down, vakum, test, acil durum kompresör</div>
           </div>
           <div class="menu-arrow">›</div>
@@ -1286,48 +1277,38 @@
     pill.title = info ? (code+' — '+info[0]+' · '+info[1]) : code;
   }
 
-  // True when the unit is locked under any U/E/F/H/J/L/P-class error,
-  // meaning the firmware-reported sensor/pressure fields are stale or
-  // sentinel (0xFE25, 0xFF7C, etc) and not real measurements.
-  function isProtected(d){
-    if(!d) return false;
-    if(d.errMain!=null && d.errMain!==0 && d.errMain!==0xFF) return true;
-    if(d.errorCode!=null && d.errorCode!==0) return true;
-    return false;
-  }
-  // True when the compressor is stopped (off / standby / protection).
-  function isStopped(d){
-    return d && (d.compressorHz==null || d.compressorHz===0);
-  }
-  // Generic sanity: the BTSC firmware in v1.4 still uses placeholder offsets
-  // for HP/LP/EV — those will be in the kPa range when real, sentinel-like
-  // (>5000 kPa, =0xFF7C, etc) when the underlying frame doesn't carry them.
+  // Per-field sanity checks. The original Daikin tool always shows whatever
+  // the AC reports — even with an active error — and only blanks values
+  // that look like sentinels (0xFE25 → -47.5°C, 0xFFFF, 0xFF7C, etc). We
+  // mirror that behaviour so the technician doesn't lose visibility.
   function safeKpa(v, maxMpa){ return (v!=null && v>=0 && v < maxMpa*1000) ? v : null; }
-  function safeTemp(v){ return (v!=null && v>-50 && v<150) ? v : null; }
+  function safeTemp(v){
+    if(v==null) return null;
+    if(v <= -47 || v >= 90) return null;        // 0xFE25 / 0xFFFF → -47.5
+    return v;
+  }
   function safeHz(v){ return (v!=null && v>=0 && v<=200) ? v : null; }
 
   function updateData(d){
     lastDataTs = Date.now();
     document.querySelector('.app')?.classList.remove('stale');
 
-    const stopped = isStopped(d);
-    const proto   = isProtected(d);
-    // When the unit is protected/off, every "live" pressure/sensor reading
-    // coming from sub=0x10/0x20/0x21 is meaningless — show em-dash instead
-    // of raw bytes that would mislead a technician.
-    const blank = stopped || proto;
-
-    const hp = blank ? null : safeKpa(d.highPressure, 6);
-    const lp = blank ? null : safeKpa(d.lowPressure,  3);
+    // Pressures — show whatever lands in the sane MPa window. Off/protected
+    // units typically push 0 or an out-of-range sentinel, both -> "—".
+    const hp = safeKpa(d.highPressure, 6);
+    const lp = safeKpa(d.lowPressure,  3);
     setText('hp-val', hp!=null ? (hp/1000).toFixed(2) : '—');
     setText('lp-val', lp!=null ? (lp/1000).toFixed(2) : '—');
 
+    // Temps — every sensor independently. 0xFE25 sentinel auto-blanks.
     const out = safeTemp(d.outdoorTemp);
-    setText('r1t', (!blank && out!=null) ? out.toFixed(1)+' °C' : '—');
+    setText('r1t', out!=null ? out.toFixed(1)+' °C' : '—');
 
+    // Compressor Hz — 0 IS a valid reading (means stopped, technician needs
+    // to see that). Only blank when null or out-of-range.
     const hz = safeHz(d.compressorHz);
     setText('rps1', hz!=null ? hz : '—');
-    setText('rps2', '—');
+    setText('rps2', '—');     // ESP only carries one inverter index right now
 
     const pin = document.getElementById('env-pin');
     if(pin){
@@ -1338,22 +1319,6 @@
       } else {
         pin.style.opacity = '0.25';
       }
-    }
-
-    // Top-of-screen protection banner (added once, toggled per state)
-    let banner = document.getElementById('proto-banner');
-    if(blank){
-      if(!banner){
-        banner = document.createElement('div');
-        banner.id = 'proto-banner';
-        banner.style.cssText = 'background:#fff3e0;border-left:4px solid #ff9500;padding:10px 12px;margin:8px 16px;border-radius:10px;font-size:12.5px;color:#7a4a00;line-height:1.4';
-        const monitor = document.getElementById('m-summary');
-        if(monitor) monitor.insertBefore(banner, monitor.firstChild);
-      }
-      const why = proto ? 'koruma altında' : 'kapalı / standby';
-      banner.innerHTML = '⚠ <b>Cihaz '+why+'</b> — kompresör durmuş, sensör çıkışları geçerli değil. Basınç ve sıcaklık alanları cihaz çalışmaya başlayınca dolar.';
-    } else if(banner){
-      banner.remove();
     }
 
     updateError(d);
