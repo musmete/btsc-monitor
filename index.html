@@ -148,14 +148,10 @@
     </div>
   </div>
 
-  <!-- Sub=0x00 sistem durumu -->
-  <div class="sect">SİSTEM (sub=0x00)</div>
+  <!-- Hata bayrağı (sub=0x00 byte[3] / sub=0x10 byte[9]) -->
+  <div class="sect">SİSTEM</div>
   <div class="card">
-    <div class="row"><span class="l">Güç durumu</span><span class="v live" id="sPower">—</span></div>
-    <div class="row"><span class="l">Mod</span><span class="v live" id="sMode">—</span></div>
-    <div class="row"><span class="l">Fan kademesi</span><span class="v live" id="sFan">—</span></div>
-    <div class="row"><span class="l">Hedef sıcaklık</span><span class="v live" id="sSet">—</span></div>
-    <div class="row"><span class="l">Hata bayrağı</span><span class="v live" id="sErrFlag">—</span></div>
+    <div class="row"><span class="l">Hata bayrağı<small>sub=0x00 byte[3] · sub=0x10 byte[9]</small></span><span class="v live" id="sErrFlag">—</span></div>
   </div>
 
   <!-- Sub=0x20 sıcaklık sensörleri (10×) -->
@@ -233,8 +229,6 @@ function familyGuess(raw){
   return {label:'Belirsiz', hint:'topology desteklenmiyor'};
 }
 
-const MODE_TXT = {0:'Sadece Fan',1:'Isıtma',2:'Soğutma',3:'Otomatik',4:'Kurutma'};
-
 const SENSOR_LABELS = [
   ['R1T','Dış hava sıcaklığı'],
   ['R2T','Eşanjör çıkış'],
@@ -300,17 +294,8 @@ function renderError(){
 
 function renderSystem(){
   const d = state.data || {};
-  const PWR  = d.pwr === 1 ? 'AÇIK' : (d.pwr === 0 ? 'KAPALI' : '—');
-  const MODE = (d.mode!=null) ? (MODE_TXT[d.mode] ?? ('mode '+d.mode)) : '—';
-  setT('sPower', PWR);
-  setT('sMode',  MODE);
-  setT('sFan',   d.fan!=null ? ('kademe '+d.fan) : '—');
-  setT('sSet',   (d.sp!=null && d.sp>-50) ? (Number(d.sp).toFixed(1)+' °C') : '—');
   setT('sErrFlag', d.errActive==null ? '—' : (d.errActive ? 'AKTİF' : 'temiz'));
-  // Apply muted class for blanks
-  ['sPower','sMode','sFan','sSet','sErrFlag'].forEach(id=>{
-    const el=$(id); if(el) el.classList.toggle('muted', el.textContent==='—');
-  });
+  const el=$('sErrFlag'); if(el) el.classList.toggle('muted', el.textContent==='—');
 }
 
 function renderTemps(){
