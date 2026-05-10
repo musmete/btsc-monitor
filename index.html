@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BTSC">
+<title>Daikin BTSC Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+  :root{
+    --bg:#0a1628;--card:#142036;--border:#243047;
+    --primary:#0096df;--primary-dk:#00437a;
+    --text:#f1f5f9;--sub:#94a3b8;--muted:#64748b;
+    --ok:#34d399;--warn:#fbbf24;--err:#f87171;
+    --hr:#6bbe54;--hp:#0096df;--cool:#60a5fa;
+  }
+  html,body{background:var(--bg);color:var(--text)}
+  body{
+    font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;
+    max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:40px;
+  }
+  .topbar{
+    background:linear-gradient(150deg,#003D7A 0%,#0060BB 100%);
+    padding:50px 18px 14px;display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;z-index:50;box-shadow:0 4px 18px rgba(0,0,0,.4);
+  }
+  .brand{display:flex;align-items:center;gap:10px}
+  .logo{
+    width:36px;height:36px;border-radius:8px;
+    background:linear-gradient(135deg,#0096df,#00437a);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-family:'Barlow Condensed',sans-serif;
+    font-size:13px;font-weight:800;letter-spacing:.5px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.15);
+  }
+  .brand-txt .name{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:800;letter-spacing:.3px;color:#fff;line-height:1}
+  .brand-txt .model{font-family:'Barlow Condensed',sans-serif;color:rgba(255,255,255,.55);font-size:10.5px;letter-spacing:.7px;margin-top:3px;font-weight:500;text-transform:uppercase}
+  .conn-pill{background:rgba(0,0,0,.32);border-radius:20px;padding:5px 11px;display:flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.08)}
+  .conn-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.25);transition:.4s}
+  .conn-dot.ok{background:#4ade80;box-shadow:0 0 8px #4ade8099}
+  .conn-dot.err{background:#f87171;box-shadow:0 0 6px #f8717199}
+  .conn-txt{color:rgba(255,255,255,.92);font-size:11px;font-weight:600;letter-spacing:.3px}
+  .body{padding:14px}
+
+  /* ── Error banner ── */
+  .err-card{
+    margin-bottom:14px;padding:14px;border-radius:12px;
+    background:linear-gradient(135deg,#5a1a1a,#8c2828);
+    border:1.5px solid #d93030;display:flex;gap:12px;align-items:flex-start;
+  }
+  .err-icon{font-size:30px;line-height:1}
+  .err-body{flex:1}
+  .err-head{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+  .err-tag{color:#ffb4b4;font-size:10.5px;letter-spacing:1.4px;font-weight:700}
+  .err-code{
+    background:rgba(0,0,0,.3);padding:2px 8px;border-radius:4px;
+    font-family:'JetBrains Mono',monospace;color:#fff;font-size:12.5px;
+    font-weight:700;letter-spacing:1px;
+  }
+  .err-summary{color:#fff;font-size:15px;font-weight:600;margin-bottom:3px}
+  .err-hint{color:#e8c8c8;font-size:12.5px;line-height:1.35}
+
+  /* ── Identity card ── */
+  .id-card{
+    margin-bottom:14px;padding:14px;border-radius:12px;
+    background:var(--card);border:1px solid var(--border);
+  }
+  .id-head{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+  .id-icon{
+    width:42px;height:42px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;font-size:22px;
+  }
+  .id-icon.hr{color:var(--hr);background:rgba(107,190,84,.12);border:1px solid rgba(107,190,84,.45)}
+  .id-icon.hp{color:var(--hp);background:rgba(0,150,223,.12);border:1px solid rgba(0,150,223,.45)}
+  .id-icon.cool{color:var(--cool);background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.45)}
+  .id-icon.unk{color:var(--muted);background:rgba(100,116,139,.12);border:1px solid rgba(100,116,139,.45)}
+  .id-name{font-size:15px;font-weight:700;color:var(--text)}
+  .id-sub{font-size:11.5px;color:var(--sub);margin-top:2px}
+  .id-badge{margin-left:auto;padding:3px 8px;border-radius:6px;background:rgba(216,146,30,.22);border:1px solid rgba(216,146,30,.55);color:#ffc560;font-size:9.5px;letter-spacing:1px;font-weight:700}
+  .id-stats{display:flex;flex-wrap:wrap;gap:7px}
+  .id-stat{
+    background:rgba(10,22,40,.6);border:1px solid rgba(36,48,71,.6);
+    padding:5px 9px;border-radius:7px;
+  }
+  .id-stat .l{color:var(--muted);font-size:9px;letter-spacing:.6px;text-transform:uppercase}
+  .id-stat .v{color:var(--text);font-size:12.5px;font-weight:600;margin-top:1px}
+
+  /* ── Status card (power/mode/setpoint) ── */
+  .status-card{
+    margin-bottom:14px;padding:18px;border-radius:14px;
+    background:linear-gradient(135deg,#1A2030,#242838);
+    border:1px solid var(--border);
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .status-card.on{
+    background:linear-gradient(135deg,#003D7A,#0060BB);
+    border-color:rgba(0,150,223,.5);
+  }
+  .status-pwr{font-size:26px;font-weight:900;letter-spacing:2px;color:var(--muted)}
+  .status-card.on .status-pwr{color:#fff}
+  .status-mode{font-size:14px;color:var(--muted);margin-top:2px;font-weight:500}
+  .status-card.on .status-mode{color:rgba(255,255,255,.85)}
+  .status-set{font-size:30px;font-weight:700;color:var(--muted);text-align:right}
+  .status-card.on .status-set{color:#fff}
+  .status-set-l{font-size:11px;color:var(--muted);text-align:right;margin-top:2px}
+
+  /* ── Section title ── */
+  .sect{font-size:10.5px;letter-spacing:1.3px;color:var(--muted);font-weight:700;margin:14px 0 8px;padding-left:4px}
+
+  /* ── Temp grid ── */
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+  .tile{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:10px;padding:14px 8px;text-align:center;
+  }
+  .tile .v{font-size:18px;font-weight:700}
+  .tile .l{font-size:9.5px;color:var(--muted);margin-top:3px;letter-spacing:.4px}
+  .tile.t1 .v{color:#60a5fa}
+  .tile.t2 .v{color:#34d399}
+  .tile.t3 .v{color:#a78bfa}
+  .tile.t4 .v{color:#f87171}
+  .tile.t5 .v{color:#fbbf24}
+  .tile.t6 .v{color:#fb923c}
+  .tile .v.muted{color:var(--muted) !important}
+
+  /* ── Mech rows ── */
+  .mech{background:var(--card);border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .mech .row{padding:11px 14px;display:flex;align-items:center;gap:11px;border-bottom:1px solid rgba(36,48,71,.5)}
+  .mech .row:last-child{border-bottom:none}
+  .mech .bar{width:3.5px;height:15px;border-radius:2px}
+  .mech .l{flex:1;color:var(--sub);font-size:13px}
+  .mech .v{color:var(--text);font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace}
+  .mech .v.muted{color:var(--muted)}
+
+  /* ── Footer ── */
+  .footer{padding:12px 4px;font-size:11px;color:var(--muted);text-align:center;line-height:1.5}
+  .footer .mac{font-family:'JetBrains Mono',monospace;color:var(--sub)}
+
+  .placeholder{color:var(--muted);font-style:italic;font-size:13px;text-align:center;padding:18px}
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">BTSC</div>
+    <div class="brand-txt">
+      <div class="name">DAIKIN MONITOR</div>
+      <div class="model" id="topModel">VRV / SkyAir / Altherma</div>
+    </div>
+  </div>
+  <div class="conn-pill">
+    <div class="conn-dot" id="connDot"></div>
+    <span class="conn-txt" id="connTxt">Bağlanıyor</span>
+  </div>
+</div>
+
+<div class="body">
+  <!-- Error banner (hidden when no error) -->
+  <div class="err-card hidden" id="errCard">
+    <div class="err-icon">⚠</div>
+    <div class="err-body">
+      <div class="err-head">
+        <span class="err-tag">AKTİF HATA</span>
+        <span class="err-code" id="errCode">--</span>
+      </div>
+      <div class="err-summary" id="errSummary">--</div>
+      <div class="err-hint" id="errHint">--</div>
+    </div>
+  </div>
+
+  <!-- Identity card (placeholder until FP arrives) -->
+  <div class="id-card" id="idCard">
+    <div class="placeholder" id="idPlaceholder">Cihaz tanılanıyor…</div>
+    <div class="hidden" id="idContent">
+      <div class="id-head">
+        <div class="id-icon" id="idIcon">?</div>
+        <div>
+          <div class="id-name" id="idName">—</div>
+          <div class="id-sub" id="idSub">—</div>
+        </div>
+        <div class="id-badge hidden" id="idBadge">İÇ ÜNİTE YOK</div>
+      </div>
+      <div class="id-stats" id="idStats"></div>
+    </div>
+  </div>
+
+  <!-- Power/mode/setpoint -->
+  <div class="status-card" id="statusCard">
+    <div>
+      <div class="status-pwr" id="pwrTxt">KAPALI</div>
+      <div class="status-mode" id="modeTxt">—</div>
+    </div>
+    <div>
+      <div class="status-set" id="setTxt">--°</div>
+      <div class="status-set-l">Hedef</div>
+    </div>
+  </div>
+
+  <div class="sect">SICAKLIK SENSÖRLERİ</div>
+  <div class="grid-3">
+    <div class="tile t1"><div class="v" id="tRoom">--</div><div class="l">Oda</div></div>
+    <div class="tile t2"><div class="v" id="tInlet">--</div><div class="l">Emme</div></div>
+    <div class="tile t3"><div class="v" id="tLiquid">--</div><div class="l">Sıvı</div></div>
+    <div class="tile t4"><div class="v" id="tDisch">--</div><div class="l">Deşarj</div></div>
+    <div class="tile t5"><div class="v" id="tOut">--</div><div class="l">Dış</div></div>
+    <div class="tile t6"><div class="v" id="tHex">--</div><div class="l">Eşanjör</div></div>
+  </div>
+
+  <div class="sect">MEKANİK PARAMETRELER</div>
+  <div class="mech">
+    <div class="row"><div class="bar" style="background:#60a5fa"></div><div class="l">Kompresör</div><div class="v" id="mComp">-- Hz</div></div>
+    <div class="row"><div class="bar" style="background:#34d399"></div><div class="l">Fan Devri</div><div class="v" id="mFan">-- RPM</div></div>
+    <div class="row"><div class="bar" style="background:#f87171"></div><div class="l">Yüksek Basınç</div><div class="v" id="mHp">-- kPa</div></div>
+    <div class="row"><div class="bar" style="background:#fbbf24"></div><div class="l">Düşük Basınç</div><div class="v" id="mLp">-- kPa</div></div>
+    <div class="row"><div class="bar" style="background:#a78bfa"></div><div class="l">Genleşme Valfi</div><div class="v" id="mEv">-- adm</div></div>
+  </div>
+
+  <div class="footer">
+    <div>Cihaz: <span class="mac" id="macTxt">—</span></div>
+    <div id="lastUpdate">Veri bekleniyor</div>
+  </div>
+</div>
+
+<script>
+// ── BTSC web monitor — MQTT-over-WebSocket, no Bluetooth required ──
+//   Pairs with ESP32 firmware that publishes the same DaikinData JSON to:
+//     btsc/<MAC>/data   (retained, sensor stream + errMain/errSubGray)
+//     btsc/<MAC>/fp     (retained, topology fingerprint JSON, one-shot at boot)
+//   MAC selection: defaults to URL param ?mac=XXXXXXXX, falls back to a hard
+//   pinned MAC (the device this app was built for). Override with `localStorage`
+//   key `btsc_mac` to track multiple devices from the same browser.
+
+const BROKER  = 'wss://broker.emqx.io:8084/mqtt';
+const params  = new URLSearchParams(location.search);
+const MAC     = (params.get('mac') || localStorage.getItem('btsc_mac') || 'D48AFC9E85C8').toUpperCase();
+const T_DATA  = 'btsc/'+MAC+'/data';
+const T_FP    = 'btsc/'+MAC+'/fp';
+
+document.getElementById('macTxt').textContent = MAC;
+
+// ── Daikin error glossary (mirror of lib/services/error_decoder.dart) ──
+const DAIKIN_ERR = {
+  'U0-01':['Soğutucu eksik','Şarj miktarı + kaçak testi'],
+  'U1-01':['Faz sırası ters','Dış ünite L1↔L2 kabloları'],
+  'U1-04':['Açık faz / 3-faz dengesizliği','L1-L2-L3 voltaj + sigorta + reverse-phase relay'],
+  'U2-01':['Güç kaynağı yetersiz','Şebeke gerilimi düşük/yüksek'],
+  'U4-00':['İç-Dış ünite haberleşme hatası','F1-F2 transmisyon hattı + iç ünite adresleri'],
+  'U5-00':['İç ünite ↔ uzaktan kumanda kopuk','P1-P2 kablosu + adres ataması'],
+  'UA-00':['İç-Dış kombinasyonu uyumsuz','Dış kapasite vs bağlı iç ünite toplamı'],
+  'UF-00':['Sistem adres ataması eksik','Otomatik adres tarama (test çalışması)'],
+  'UH-00':['Sistem adres uyumsuzluğu','İç ünite çakışan adres'],
+  'E1-01':['Dış ünite PCB hatası','Ana PCB değişimi'],
+  'E3-00':['Yüksek basınç koruma','Eşanjör tıkanıklığı / dış fan / R8T probu'],
+  'E4-00':['Düşük basınç koruma','Soğutucu eksik / EV kapalı / sıvı hat'],
+  'E5-00':['İnvertör kompresör motor kilitlendi','Kompresör direnç + invertör PCB'],
+  'E6-00':['Standart kompresör motor kilitlendi','Kontaktör + motor sargı testi'],
+  'E7-00':['Dış fan motor kilitlendi','Fan motoru + kapasitör + PCB fan kontrol'],
+  'E9-00':['Genleşme valfi (EV) hatası','EV bobini + kablolama + akım çekişi'],
+  'F3-00':['Deşarj sıcaklığı yüksek','R3T sensör + soğutucu şarj'],
+  'F6-00':['Yüksek basınç anormal','R5T/R6T/fan + eşanjör tıkanıklığı'],
+  'H3-00':['HPS arızalı','Yüksek basınç switch'],
+  'H4-00':['LPS arızalı','Düşük basınç switch'],
+  'H7-00':['Dış fan sinyal hatası','Fan tachometer'],
+  'H9-00':['Dış ortam sensörü hatası','R1T direnç testi'],
+  'J3-00':['Deşarj boru sensörü','R3T direnç + bağlantı'],
+  'J5-00':['Emiş boru sensörü','R6T direnç + bağlantı'],
+  'J6-00':['Dış eşanjör sensörü','R4T direnç + bağlantı'],
+  'L4-00':['Eşanjör sıcaklığı yüksek (invertör)','Soğutma havası + heat sink'],
+  'L5-00':['İnvertör çıkış akımı aşırı','Kompresör + invertör PCB'],
+  'L8-00':['Akım dengesizliği','Şebeke + invertör DC bus'],
+  'L9-00':['Stall önleme (overload)','Soğutucu şarj + EV açıklığı'],
+  'P1-00':['İnvertör DC kondansatör','Invertör PCB'],
+  'P4-00':['İnvertör radyatör sensörü','IGBT sensör'],
+};
+
+// ── Decoders ──
+const CLASS_TBL = [null,null,'E','E','F','H','J','L','P','U','A','A',null,null,null,null];
+function grayToBin(g){let b=g;g>>=1;while(g){b^=g;g>>=1;}return b;}
+function decodeError(em,eg){
+  if(em==null||em===0||em===0xFF) return null;
+  const cls=CLASS_TBL[(em>>4)&0xF];
+  if(!cls) return null;
+  const code=em&0xF;
+  const sub=grayToBin(eg|0).toString().padStart(2,'0');
+  return cls+code+'-'+sub;
+}
+
+// Family detection from fingerprint raw0x00 byte 5 (4-way valve qty).
+function detectFamily(fp){
+  const wv=fp.raw0x00 ? parseInt(fp.raw0x00.substr(10,2),16) : 0;
+  const inv=fp.raw0x00 ? parseInt(fp.raw0x00.substr(2,2),16) : 0;
+  const std=fp.raw0x00 ? parseInt(fp.raw0x00.substr(4,2),16) : 0;
+  if(wv>=2) return {key:'hr',label:'Heat Recovery',hint:'REYQ / VRV HR',icon:'⇅'};
+  if(wv===1) return {key:'hp',label:'Heat Pump',hint:'RXYQ / VRV HP',icon:'⇆'};
+  if(wv===0&&(inv+std>0)) return {key:'cool',label:'Soğutma Yalnız',hint:'RZ*',icon:'❄'};
+  return {key:'unk',label:'Bilinmiyor',hint:'—',icon:'?'};
+}
+
+const MODE_TXT={0:'Sadece Fan',1:'Isıtma',2:'Soğutma',3:'Otomatik',4:'Kurutma'};
+
+// ── State ──
+const state={data:null,fp:null};
+
+// ── Render ──
+function fmtT(v){return v==null||v<=-90?null:v.toFixed(1)+'°';}
+function setTile(id,v){
+  const el=document.getElementById(id);
+  const f=fmtT(v);
+  el.textContent=f||'--';
+  el.classList.toggle('muted',!f);
+}
+function setMech(id,v,unit){
+  const el=document.getElementById(id);
+  if(v==null||v<0){el.textContent='-- '+unit;el.classList.add('muted');}
+  else{el.textContent=v+' '+unit;el.classList.remove('muted');}
+}
+function setConn(cls,txt){
+  const dot=document.getElementById('connDot');
+  dot.className='conn-dot '+(cls||'');
+  document.getElementById('connTxt').textContent=txt;
+}
+
+function renderError(){
+  const d=state.data;const card=document.getElementById('errCard');
+  if(!d){card.classList.add('hidden');return;}
+  let code=null;
+  if(d.errMain!=null&&d.errSubGray!=null) code=decodeError(d.errMain,d.errSubGray);
+  if(!code&&d.errorDisplay) code=d.errorDisplay;
+  if(!code&&d.errorCode){
+    if(d.errorCode===0){card.classList.add('hidden');return;}
+    code='kod '+d.errorCode;
+  }
+  if(!code){card.classList.add('hidden');return;}
+  card.classList.remove('hidden');
+  document.getElementById('errCode').textContent=code;
+  const info=DAIKIN_ERR[code];
+  document.getElementById('errSummary').textContent=info?info[0]:'Bilinmeyen hata kodu';
+  document.getElementById('errHint').textContent=info?info[1]:'Servis manuela bakın (ESIE13-01)';
+}
+
+function renderIdentity(){
+  const fp=state.fp;
+  const ph=document.getElementById('idPlaceholder');
+  const ct=document.getElementById('idContent');
+  if(!fp||!fp.ready){ph.classList.remove('hidden');ct.classList.add('hidden');return;}
+  ph.classList.add('hidden');ct.classList.remove('hidden');
+
+  const fam=detectFamily(fp);
+  const ic=document.getElementById('idIcon');
+  ic.textContent=fam.icon;ic.className='id-icon '+fam.key;
+  document.getElementById('idName').textContent=fam.label;
+  document.getElementById('idSub').textContent=fam.hint;
+  document.getElementById('topModel').textContent=fam.label.toUpperCase();
+
+  // Parse raw0x00 bytes
+  const r=fp.raw0x00||'';
+  const b=[];for(let i=0;i+1<r.length;i+=2)b.push(parseInt(r.substr(i,2),16));
+  const sensors=b[0]||0,inv=b[1]||0,std=b[2]||0,fans=b[3]||0,evs=b[4]||0,wv=b[5]||0,maxIdu=b[8]||0,connIdu=b[9]||0;
+
+  document.getElementById('idBadge').classList.toggle('hidden',connIdu>0);
+
+  const stats=[
+    ['Modül',fp.modules],
+    ['Kompresör',inv+' INV + '+std+' STD'],
+    ['Sensör',sensors],
+    ['Fan',fans],
+    ['EV',evs],
+    ['4-Way V.',wv],
+    ['İç ünite',connIdu+' / '+maxIdu],
+    ['Adresler',(fp.addrs||[]).length+' adet'],
+  ];
+  document.getElementById('idStats').innerHTML=stats.map(s=>
+    '<div class="id-stat"><div class="l">'+s[0]+'</div><div class="v">'+s[1]+'</div></div>'
+  ).join('');
+}
+
+function renderSensors(){
+  const d=state.data||{};
+  setTile('tRoom',d.roomTemp);setTile('tInlet',d.inletTemp);setTile('tLiquid',d.liquidTemp);
+  setTile('tDisch',d.dischargeTemp);setTile('tOut',d.outdoorTemp);setTile('tHex',d.heatExchTemp);
+
+  setMech('mComp',d.compressorHz,'Hz');
+  setMech('mFan',d.fanRpm,'RPM');
+  setMech('mHp',d.highPressure,'kPa');
+  setMech('mLp',d.lowPressure,'kPa');
+  setMech('mEv',d.expansionValve,'adm');
+
+  const card=document.getElementById('statusCard');
+  card.classList.toggle('on',d.powerState===1);
+  document.getElementById('pwrTxt').textContent=d.powerState===1?'AÇIK':'KAPALI';
+  document.getElementById('modeTxt').textContent=MODE_TXT[d.operationMode]||'—';
+  const set=d.setpoint;
+  document.getElementById('setTxt').textContent=set!=null?set.toFixed(1)+'°':'--°';
+}
+
+function renderAll(){renderError();renderIdentity();renderSensors();
+  document.getElementById('lastUpdate').textContent='Son güncelleme · '+new Date().toLocaleTimeString('tr-TR');
+}
+
+// ── MQTT ──
+const client=mqtt.connect(BROKER,{
+  clientId:'btsc_'+Math.random().toString(36).slice(2,8),
+  clean:true,reconnectPeriod:3000,connectTimeout:8000,
+});
+client.on('connect',()=>{
+  setConn('ok','Bağlı');
+  client.subscribe([T_DATA,T_FP]);
+});
+client.on('close',()=>setConn('err','Bağlantı yok'));
+client.on('reconnect',()=>setConn('','Bağlanıyor'));
+client.on('message',(t,p)=>{
+  try{
+    const j=JSON.parse(p.toString());
+    if(t===T_FP){state.fp=j;}
+    else if(t===T_DATA){state.data=j;}
+    renderAll();
+  }catch(e){console.warn('parse',e);}
+});
+
+// First paint
+renderAll();
+</script>
+</body>
+</html>
