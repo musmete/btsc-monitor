@@ -8,1367 +8,373 @@
 <meta name="apple-mobile-web-app-title" content="BTSC">
 <meta name="theme-color" content="#0096DF">
 <title>Daikin BTSC Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <style>
-  /* === DEPLOY OVERRIDES — strip the iPhone preview chrome, go full-screen === */
-  html, body { padding: 0 !important; background: #f5f7fa !important; min-height: 100vh; }
-  body { display: block !important; }
-  h1.page-title, p.page-subtitle, .info-box { display: none !important; }
-  .phone {
-    width: 100% !important; max-width: 480px !important; height: auto !important;
-    min-height: 100vh !important; border-radius: 0 !important; box-shadow: none !important;
-    margin: 0 auto !important;
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+  :root{
+    --bg:#f5f7fa;--card:#fff;--ink:#1c1c1e;--sub:#8e8e93;--mute:#c7c7cc;
+    --line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.06);
+    --primary:#0096DF;--primary-dk:#0073b8;
+    --ok:#34c759;--warn:#ff9500;--err:#ff3b30;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
   }
-  .notch, .home-indicator, .status-bar { display: none !important; }
-  .app { height: auto !important; min-height: 100vh !important; }
-  /* Connection pill replaces the BLE status text */
-  .ble-dot.err { background: #ff3b30; box-shadow: 0 0 0 4px rgba(255,59,48,.25); animation: pulseErr 1.5s infinite; }
-  .ble-dot.warn { background: #ff9500; box-shadow: 0 0 0 4px rgba(255,149,0,.25); }
-  @keyframes pulseErr { 0%,100%{box-shadow:0 0 0 4px rgba(255,59,48,.25)} 50%{box-shadow:0 0 0 6px rgba(255,59,48,.1)} }
-  .err-pill.err { background: rgba(255,255,255,0.95) !important; color: #ff3b30 !important; }
-  .err-pill.warn { background: rgba(255,255,255,0.95) !important; color: #ff9500 !important; }
-  .stale .live-card .val, .stale .row .value.live { opacity: 0.45; }
-</style>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 30px 10px;
-    color: #1c1c1e;
-  }
-  h1.page-title {
-    color: #fff;
-    font-weight: 600;
-    font-size: 22px;
-    margin-bottom: 6px;
-    letter-spacing: -0.3px;
-  }
-  p.page-subtitle {
-    color: rgba(255,255,255,0.6);
-    font-size: 13px;
-    margin-bottom: 24px;
-  }
+  html,body{background:var(--bg);color:var(--ink)}
+  body{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:36px;font-size:14px;line-height:1.4}
 
-  /* iPhone Frame */
-  .phone {
-    width: 390px;
-    height: 844px;
-    background: #fff;
-    border-radius: 50px;
-    box-shadow: 0 0 0 12px #1c1c1e, 0 0 0 14px #2c2c2e, 0 30px 80px rgba(0,0,0,0.5);
-    position: relative;
-    overflow: hidden;
+  /* ── Header ── */
+  .topbar{
+    background:linear-gradient(135deg,#003D7A 0%,#0096DF 100%);
+    padding:50px 18px 16px;display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;z-index:50;color:#fff;
+    box-shadow:0 4px 18px rgba(0,0,0,.15);
   }
-  .notch {
-    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-    width: 130px; height: 32px; background: #1c1c1e; border-radius: 20px;
-    z-index: 1000;
+  .brand{display:flex;align-items:center;gap:11px}
+  .logo{
+    width:38px;height:38px;border-radius:9px;
+    background:linear-gradient(135deg,rgba(255,255,255,.25),rgba(255,255,255,.1));
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:800;letter-spacing:.5px;
+    border:1px solid rgba(255,255,255,.2);
   }
-  .home-indicator {
-    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-    width: 130px; height: 5px; background: #1c1c1e; border-radius: 3px;
-    z-index: 1000;
-  }
-  .status-bar {
-    height: 50px; padding: 16px 30px 0; display: flex; justify-content: space-between;
-    align-items: center; font-size: 15px; font-weight: 600;
-    position: relative; z-index: 5;
-  }
-  .status-bar .right { display: flex; gap: 5px; align-items: center; font-size: 13px; }
+  .brand .name{font-size:16px;font-weight:800;letter-spacing:.3px;line-height:1}
+  .brand .sub{font-size:10.5px;letter-spacing:.7px;opacity:.65;margin-top:3px;text-transform:uppercase}
+  .conn-pill{background:rgba(0,0,0,.28);border-radius:20px;padding:5px 11px;display:flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.1)}
+  .conn-dot{width:7px;height:7px;border-radius:50%;background:#fff5;transition:.3s}
+  .conn-dot.ok{background:#4ade80;box-shadow:0 0 8px #4ade8099}
+  .conn-dot.err{background:#f87171;box-shadow:0 0 8px #f8717188}
+  .conn-dot.warn{background:#fbbf24;box-shadow:0 0 8px #fbbf2488}
+  .conn-txt{font-size:11px;font-weight:600;letter-spacing:.3px}
 
-  /* App container */
-  .app {
-    height: 794px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    background: #f5f7fa;
-    position: relative;
-  }
-  .app::-webkit-scrollbar { width: 0; }
+  /* ── Body ── */
+  .body{padding:14px}
 
-  /* Screens */
-  .screen {
-    display: none;
-    min-height: 100%;
-    flex-direction: column;
-    animation: slideIn 0.25s ease;
-  }
-  .screen.active { display: flex; }
-  @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  /* ── Card primitives ── */
+  .card{background:var(--card);border-radius:13px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.04);border:1px solid var(--line2)}
+  .sect{font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.7px;font-weight:700;padding:6px 4px}
 
-  /* Header (top bar inside screens) */
-  .top-bar {
-    position: sticky; top: 0; z-index: 10;
-    background: rgba(245,247,250,0.92);
-    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    padding: 6px 16px 12px;
-    display: flex; align-items: center; gap: 8px;
-    border-bottom: 0.5px solid rgba(0,0,0,0.08);
-  }
-  .back-btn {
-    background: none; border: none; color: #0096DF; font-size: 16px; font-weight: 500;
-    padding: 6px 4px; cursor: pointer; display: flex; align-items: center; gap: 2px;
-  }
-  .back-btn:hover { opacity: 0.7; }
-  .top-title { font-size: 17px; font-weight: 600; flex: 1; text-align: center; padding-right: 60px; }
+  /* ── Identity card ── */
+  .id-head{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+  .id-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;background:rgba(0,150,223,.1);border:1px solid rgba(0,150,223,.3);color:var(--primary)}
+  .id-name{font-size:15px;font-weight:700;color:var(--ink)}
+  .id-sub{font-size:11.5px;color:var(--sub);margin-top:2px}
+  .id-sub .tag{display:inline-block;padding:1px 6px;border-radius:4px;background:#fff3e0;color:#b85400;font-size:9.5px;letter-spacing:.5px;font-weight:700;margin-left:5px;border:1px solid rgba(184,84,0,.18)}
+  .id-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line2)}
+  .id-row{display:flex;justify-content:space-between;font-size:13px;padding:2px 0}
+  .id-row .l{color:var(--sub)}
+  .id-row .v{color:var(--ink);font-weight:600;font-family:var(--mono);font-size:12.5px}
+  .raw-row{margin-top:10px;padding-top:8px;border-top:1px solid var(--line2);font-size:11px;color:var(--sub)}
+  .raw-row .h{font-family:var(--mono);color:#444;font-size:11.5px;letter-spacing:.5px;margin-top:3px;word-break:break-all}
 
-  /* Device Card */
-  .device-card {
-    margin: 12px 16px 8px;
-    background: linear-gradient(135deg, #0096DF 0%, #0073b8 100%);
-    color: #fff; padding: 14px 16px; border-radius: 16px;
-    box-shadow: 0 4px 14px rgba(0, 150, 223, 0.25);
+  /* ── Error card ── */
+  .err{
+    background:linear-gradient(135deg,#5a1a1a,#7a2222);
+    color:#fff;border:1px solid #d93030;
   }
-  .device-card .row1 {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 8px;
-  }
-  .device-card .ble-status {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 12px; font-weight: 500; opacity: 0.95;
-  }
-  .ble-dot {
-    width: 8px; height: 8px; background: #34c759; border-radius: 50%;
-    box-shadow: 0 0 0 4px rgba(52,199,89,0.25);
-    animation: pulse 1.5s infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 4px rgba(52,199,89,0.25); }
-    50% { box-shadow: 0 0 0 6px rgba(52,199,89,0.1); }
-  }
-  .device-card .err-pill {
-    background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px;
-    font-size: 11px; font-weight: 600;
-  }
-  .device-card h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.4px; }
-  .device-card .meta { font-size: 12px; opacity: 0.85; margin-top: 2px; }
-  .device-card .grid {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-    margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);
-  }
-  .device-card .stat-label { font-size: 10px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.5px; }
-  .device-card .stat-val { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .err .head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .err .tag{color:#ffb4b4;font-size:10.5px;letter-spacing:1.4px;font-weight:700}
+  .err .code{background:rgba(0,0,0,.3);padding:3px 9px;border-radius:5px;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:1px}
+  .err .summary{font-size:15.5px;font-weight:600;margin-bottom:5px}
+  .err .hint{color:#e8c8c8;font-size:12.5px;line-height:1.4}
+  .err .hint b{color:#fff}
+  .err.ok{background:linear-gradient(135deg,#1f3d1a,#2a5722);border-color:#34c759;color:#dff5d9}
+  .err.ok .tag{color:#a7e8a0}.err.ok .summary{color:#fff}.err.ok .hint{color:#cce4c5}
 
-  /* Home menu */
-  .home-menu { padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
-  .menu-card {
-    background: #fff; padding: 18px 16px; border-radius: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-    display: flex; align-items: center; gap: 14px;
-    cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
-    border: 1px solid rgba(0,0,0,0.04);
-  }
-  .menu-card:active { transform: scale(0.97); }
-  .menu-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-  .menu-icon {
-    width: 48px; height: 48px; border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 24px; flex-shrink: 0;
-  }
-  .menu-card .ic-monitor { background: #e3f2fd; color: #0073b8; }
-  .menu-card .ic-history { background: #fff3e0; color: #ff9500; }
-  .menu-card .ic-config { background: #f3e5f5; color: #8e44ad; }
-  .menu-card .ic-action { background: #ffebee; color: #ff3b30; }
-  .menu-text { flex: 1; }
-  .menu-title { font-size: 16px; font-weight: 600; color: #1c1c1e; margin-bottom: 2px; }
-  .menu-desc { font-size: 12px; color: #8e8e93; }
-  .menu-arrow { color: #c7c7cc; font-size: 18px; }
-  .home-header {
-    padding: 16px 16px 4px; font-size: 13px; color: #8e8e93;
-    text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600;
-  }
+  /* ── Sensor table ── */
+  .row{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid var(--line2);min-height:38px}
+  .row:last-child{border-bottom:none}
+  .row .l{font-size:13px;color:var(--ink)}
+  .row .l small{color:var(--sub);font-size:10.5px;margin-left:4px}
+  .row .v{font-family:var(--mono);font-size:13.5px;font-weight:600;color:var(--primary-dk)}
+  .row .v.muted{color:var(--mute);font-weight:400}
+  .row .v.live{font-variant-numeric:tabular-nums}
 
-  /* Tabs */
-  .tabs {
-    display: flex; padding: 0 12px; gap: 4px;
-    background: #f5f7fa; border-bottom: 0.5px solid rgba(0,0,0,0.08);
-    position: sticky; top: 51px; z-index: 9;
-  }
-  .tab {
-    flex: 1; padding: 10px 4px; text-align: center;
-    font-size: 13px; font-weight: 500; color: #8e8e93;
-    cursor: pointer; border-bottom: 2px solid transparent;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .tab.active { color: #0096DF; border-bottom-color: #0096DF; }
+  /* ── Footer raw ── */
+  .footer{padding:12px 4px;font-size:11px;color:var(--sub);text-align:center;line-height:1.5;font-family:var(--mono)}
 
-  .tab-content { display: none; padding: 12px 16px 30px; }
-  .tab-content.active { display: block; }
-
-  /* Cards & Sections */
-  .section-label {
-    font-size: 12px; color: #8e8e93; text-transform: uppercase;
-    letter-spacing: 0.5px; font-weight: 600;
-    padding: 12px 4px 6px;
-  }
-  .card {
-    background: #fff; border-radius: 12px; overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04); margin-bottom: 8px;
-  }
-  .row {
-    padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;
-    border-bottom: 0.5px solid rgba(0,0,0,0.06);
-    min-height: 44px;
-  }
-  .row:last-child { border-bottom: none; }
-  .row .label { font-size: 14px; color: #1c1c1e; }
-  .row .label .sub { font-size: 11px; color: #8e8e93; display: block; margin-top: 2px; }
-  .row .value { font-size: 14px; font-weight: 500; color: #0073b8; text-align: right; }
-  .row .value.live { font-variant-numeric: tabular-nums; }
-  .row .value.warn { color: #ff9500; }
-  .row .value.err { color: #ff3b30; }
-  .row .value.ok { color: #34c759; }
-  .row.clickable { cursor: pointer; }
-  .row.clickable:active { background: #f5f7fa; }
-  .row .arrow { color: #c7c7cc; font-size: 14px; margin-left: 6px; }
-
-  /* PDF code badge */
-  .code-badge {
-    display: inline-block; background: #f0f0f0; color: #555;
-    padding: 1px 6px; border-radius: 4px; font-size: 10px;
-    font-family: "SF Mono", monospace; font-weight: 600;
-    margin-right: 6px; vertical-align: middle;
-  }
-  .code-badge.m1 { background: #e3f2fd; color: #0073b8; }
-  .code-badge.m2 { background: #f3e5f5; color: #8e44ad; }
-  .code-badge.m2-act { background: #ffebee; color: #ff3b30; }
-
-  /* Live grid */
-  .live-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0;
-  }
-  .live-card {
-    background: #fff; padding: 12px 14px; border-radius: 12px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .live-card .ttl {
-    font-size: 11px; color: #8e8e93; text-transform: uppercase;
-    letter-spacing: 0.5px; font-weight: 600;
-  }
-  .live-card .val {
-    font-size: 22px; font-weight: 700; color: #0073b8;
-    margin-top: 4px; font-variant-numeric: tabular-nums;
-    letter-spacing: -0.6px;
-  }
-  .live-card .val .unit { font-size: 13px; font-weight: 500; color: #8e8e93; margin-left: 3px; }
-  .live-card .sub-val { font-size: 11px; color: #8e8e93; margin-top: 3px; }
-
-  /* Pressure card big */
-  .pressure-card {
-    background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
-    padding: 14px; border-radius: 14px; margin-bottom: 8px;
-    border: 1px solid rgba(0,0,0,0.05);
-    display: flex; gap: 12px;
-  }
-  .p-block { flex: 1; }
-  .p-block .ttl { font-size: 11px; color: #8e8e93; font-weight: 600; }
-  .p-block .big { font-size: 26px; font-weight: 700; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-  .p-block.hp .big { color: #ff3b30; }
-  .p-block.lp .big { color: #007aff; }
-  .p-block .sat { font-size: 11px; color: #8e8e93; margin-top: 2px; }
-  .p-divider { width: 1px; background: rgba(0,0,0,0.08); }
-
-  /* Operating envelope */
-  .env-card {
-    background: #fff; border-radius: 12px; padding: 12px 14px;
-    margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .env-bar {
-    height: 6px; background: #e8eef4; border-radius: 3px;
-    margin: 8px 0 4px; position: relative; overflow: hidden;
-  }
-  .env-fill {
-    height: 100%; background: linear-gradient(90deg, #34c759 0%, #34c759 70%, #ff9500 90%, #ff3b30 100%);
-    border-radius: 3px;
-    transition: width 0.5s ease;
-  }
-  .env-pin {
-    position: absolute; top: -3px; width: 12px; height: 12px;
-    background: #fff; border: 2px solid #0073b8; border-radius: 50%;
-    transform: translateX(-50%);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-  }
-
-  /* Indoor units */
-  .iu-card {
-    background: #fff; border-radius: 12px; padding: 12px 14px;
-    margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .iu-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
-  .iu-name { font-size: 14px; font-weight: 600; }
-  .iu-mode { font-size: 11px; padding: 2px 8px; border-radius: 8px; font-weight: 500; }
-  .iu-mode.cool { background: #e3f2fd; color: #007aff; }
-  .iu-mode.heat { background: #fff3e0; color: #ff9500; }
-  .iu-mode.fan { background: #f5f5f5; color: #8e8e93; }
-  .iu-mode.off { background: #f5f5f5; color: #8e8e93; }
-  .iu-mode.err { background: #ffebee; color: #ff3b30; }
-  .iu-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
-    font-size: 11px;
-  }
-  .iu-grid > div { background: #f5f7fa; padding: 5px 6px; border-radius: 6px; }
-  .iu-grid .lbl { color: #8e8e93; font-size: 10px; }
-  .iu-grid .v { font-weight: 600; color: #1c1c1e; font-size: 12px; }
-
-  /* Error card */
-  .err-card {
-    background: #ffebee; border-radius: 12px; padding: 14px;
-    margin-bottom: 12px; border-left: 4px solid #ff3b30;
-  }
-  .err-card.warn { background: #fff3e0; border-color: #ff9500; }
-  .err-card.ok { background: #e8f5e9; border-color: #34c759; }
-  .err-code { font-size: 26px; font-weight: 800; letter-spacing: -1px; font-family: "SF Mono", monospace; }
-  .err-card .err-code { color: #ff3b30; }
-  .err-card.warn .err-code { color: #ff9500; }
-  .err-card.ok .err-code { color: #34c759; }
-  .err-title { font-size: 14px; font-weight: 600; margin-top: 4px; }
-  .err-causes {
-    margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.06);
-    font-size: 12px; color: #555; line-height: 1.5;
-  }
-
-  /* Bottom bar (write changes) */
-  .write-bar {
-    position: absolute; left: 0; right: 0; bottom: 18px;
-    margin: 0 12px; padding: 10px 14px;
-    background: #ff9500; color: #fff; border-radius: 14px;
-    box-shadow: 0 6px 20px rgba(255, 149, 0, 0.4);
-    display: flex; align-items: center; justify-content: space-between;
-    z-index: 100;
-    animation: slideUp 0.3s ease;
-  }
-  @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .write-bar .info { font-size: 13px; }
-  .write-bar .info b { font-size: 14px; }
-  .write-bar button {
-    background: #fff; color: #ff9500; border: none; padding: 8px 14px;
-    border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer;
-  }
-
-  /* Action card */
-  .act-card {
-    background: #fff; border-radius: 14px; padding: 14px; margin-bottom: 10px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    border-left: 3px solid #34c759;
-  }
-  .act-card.crit { border-left-color: #ff3b30; }
-  .act-card.warn { border-left-color: #ff9500; }
-  .act-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-  .act-icon { font-size: 22px; }
-  .act-title { font-size: 15px; font-weight: 600; flex: 1; }
-  .act-code { font-size: 10px; padding: 2px 6px; background: #f0f0f0; color: #555;
-              border-radius: 4px; font-family: "SF Mono", monospace; font-weight: 600; }
-  .act-desc { font-size: 12px; color: #555; line-height: 1.4; margin-bottom: 8px; }
-  .act-pre { font-size: 11px; color: #8e8e93; margin-bottom: 8px; }
-  .act-pre b { color: #ff3b30; }
-  .act-btn {
-    background: #34c759; color: #fff; border: none; padding: 8px 14px;
-    border-radius: 10px; font-size: 13px; font-weight: 600;
-    cursor: pointer; width: 100%;
-  }
-  .act-btn.crit { background: #ff3b30; }
-  .act-btn.warn { background: #ff9500; }
-
-  /* Confirm modal */
-  .modal-back {
-    position: absolute; inset: 0; background: rgba(0,0,0,0.4); z-index: 200;
-    display: none; align-items: flex-end; padding-bottom: 30px;
-    backdrop-filter: blur(4px);
-  }
-  .modal-back.show { display: flex; }
-  .modal {
-    background: #fff; margin: 0 12px; padding: 18px; border-radius: 18px; width: 100%;
-    box-shadow: 0 -10px 40px rgba(0,0,0,0.3);
-  }
-  .modal h4 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
-  .modal p { font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 12px; }
-  .modal-warn { background: #ffebee; padding: 10px 12px; border-radius: 10px; font-size: 12px;
-                color: #ff3b30; margin-bottom: 12px; }
-  .modal-btns { display: flex; gap: 8px; }
-  .modal-btn { flex: 1; padding: 11px; border-radius: 11px; font-size: 14px; font-weight: 600;
-               border: none; cursor: pointer; }
-  .modal-btn.cancel { background: #f0f0f0; color: #1c1c1e; }
-  .modal-btn.confirm { background: #ff3b30; color: #fff; }
-
-  /* Mini chart */
-  .chart-card {
-    background: #fff; border-radius: 12px; padding: 12px 14px;
-    margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .chart-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-  .chart-card svg { width: 100%; height: 80px; }
-
-  /* Counters */
-  .counter-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  }
-  .counter {
-    background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
-    padding: 12px 14px; border-radius: 12px;
-    border: 1px solid rgba(0,0,0,0.04);
-  }
-  .counter .ttl { font-size: 11px; color: #8e8e93; }
-  .counter .v { font-size: 20px; font-weight: 700; margin-top: 4px;
-                color: #0073b8; font-variant-numeric: tabular-nums; }
-  .counter .v small { font-size: 12px; font-weight: 500; color: #8e8e93; }
-
-  /* Caption (small explainer) */
-  .caption {
-    font-size: 11px; color: #8e8e93; padding: 8px 4px 0;
-    line-height: 1.4;
-  }
-
-  /* Description box at bottom */
-  .info-box {
-    margin-top: 30px; padding: 20px;
-    background: rgba(255,255,255,0.05); border-radius: 16px;
-    color: rgba(255,255,255,0.8); font-size: 13px;
-    max-width: 580px; line-height: 1.6;
-    border: 1px solid rgba(255,255,255,0.08);
-  }
-  .info-box h3 { font-size: 14px; color: #fff; margin-bottom: 8px; }
-  .info-box code {
-    background: rgba(255,255,255,0.1); padding: 1px 5px;
-    border-radius: 3px; font-size: 12px;
-  }
+  /* ── Stale state when no fresh data ── */
+  .stale .row .v.live, .stale .id-grid .v { opacity: 0.45; }
 </style>
 </head>
 <body>
 
-<h1 class="page-title">Daikin BTSC — Önizleme</h1>
-<p class="page-subtitle">Görev odaklı 4-kapılı yapı · VRV IV (RYYQ12T7Y1B / ID2297)</p>
-
-<div class="phone">
-  <div class="notch"></div>
-  <div class="home-indicator"></div>
-
-  <div class="status-bar">
-    <span id="clock">10:42</span>
-    <span class="right">📶 100% 🔋</span>
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">BTSC</div>
+    <div>
+      <div class="name">Daikin Monitor</div>
+      <div class="sub" id="modelHint">topology bekleniyor</div>
+    </div>
   </div>
-
-  <div class="app">
-
-    <!-- ============ HOME ============ -->
-    <div class="screen active" id="screen-home">
-      <div class="device-card">
-        <div class="row1">
-          <div class="ble-status">
-            <span class="ble-dot"></span>
-            <span>BTSC bağlı</span>
-          </div>
-          <span class="err-pill">✓ Hata yok</span>
-        </div>
-        <h3>RYYQ12T7Y1B</h3>
-        <div class="meta">VRV IV • Heat Pump (sürekli ısıtma)</div>
-        <div class="grid">
-          <div>
-            <div class="stat-label">Yazılım</div>
-            <div class="stat-val">ID2297</div>
-          </div>
-          <div>
-            <div class="stat-label">Kapasite</div>
-            <div class="stat-val">12 HP</div>
-          </div>
-          <div>
-            <div class="stat-label">Durum</div>
-            <div class="stat-val">❄️ Soğutma</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="home-header">Ne yapmak istiyorsun?</div>
-      <div class="home-menu">
-
-        <div class="menu-card" onclick="show('screen-monitor')">
-          <div class="menu-icon ic-monitor">📊</div>
-          <div class="menu-text">
-            <div class="menu-title">Canlı İzleme</div>
-            <div class="menu-desc">Şimdi nasıl çalışıyor? — sensörler, kompresör, iç üniteler</div>
-          </div>
-          <div class="menu-arrow">›</div>
-        </div>
-
-        <div class="menu-card" onclick="show('screen-history')">
-          <div class="menu-icon ic-history">📜</div>
-          <div class="menu-text">
-            <div class="menu-title">Geçmiş & Tanı</div>
-            <div class="menu-desc">Hata kodları, retry geçmişi, sayaçlar</div>
-          </div>
-          <div class="menu-arrow">›</div>
-        </div>
-
-        <div class="menu-card" onclick="show('screen-config')">
-          <div class="menu-icon ic-config">⚙️</div>
-          <div class="menu-text">
-            <div class="menu-title">Yapılandırma</div>
-            <div class="menu-desc">Saha ayarları (Mod 2) — Te/Tc, gürültü, talep, kaçak</div>
-          </div>
-          <div class="menu-arrow">›</div>
-        </div>
-
-        <div class="menu-card" onclick="show('screen-action')">
-          <div class="menu-icon ic-action">🛠️</div>
-          <div class="menu-text">
-            <div class="menu-title">Servis Eylemi</div>
-            <div class="menu-desc">Pump-down, vakum, test, acil durum kompresör</div>
-          </div>
-          <div class="menu-arrow">›</div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- ============ MONITOR ============ -->
-    <div class="screen" id="screen-monitor">
-      <div class="top-bar">
-        <button class="back-btn" onclick="show('screen-home')">‹ Ana Menü</button>
-        <div class="top-title">Canlı İzleme</div>
-      </div>
-      <div class="tabs">
-        <div class="tab active" data-tab="m-summary">Özet</div>
-        <div class="tab" data-tab="m-chart">Grafik</div>
-        <div class="tab" data-tab="m-table">Tablo</div>
-        <div class="tab" data-tab="m-iu">İç Üniteler</div>
-      </div>
-
-      <!-- SUMMARY -->
-      <div class="tab-content active" id="m-summary">
-        <div class="pressure-card">
-          <div class="p-block hp">
-            <div class="ttl">Yüksek Basınç (HP)</div>
-            <div class="big" id="hp-val">3.21</div>
-            <div class="sat">≈ 51.4°C yoğuşma sıcaklığı</div>
-          </div>
-          <div class="p-divider"></div>
-          <div class="p-block lp">
-            <div class="ttl">Düşük Basınç (LP)</div>
-            <div class="big" id="lp-val">0.92</div>
-            <div class="sat">≈ 5.8°C buharlaşma sıcaklığı</div>
-          </div>
-        </div>
-
-        <div class="env-card">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:13px; font-weight:600;">Çalışma zarfı</span>
-            <span style="font-size:11px; color:#8e8e93;">Normal aralıkta</span>
-          </div>
-          <div class="env-bar">
-            <div class="env-fill" style="width: 100%;"></div>
-            <div class="env-pin" id="env-pin" style="left: 64%;"></div>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:10px; color:#8e8e93;">
-            <span>Düşük</span><span>Optimal</span><span>Yüksek</span>
-          </div>
-        </div>
-
-        <div class="section-label">Kompresör & Fan</div>
-        <div class="live-grid">
-          <div class="live-card">
-            <div class="ttl">INV1 Kompresör</div>
-            <div class="val"><span id="rps1">68</span><span class="unit">rps</span></div>
-            <div class="sub-val">Basma: 78.3 °C</div>
-          </div>
-          <div class="live-card">
-            <div class="ttl">INV2 Kompresör</div>
-            <div class="val"><span id="rps2">52</span><span class="unit">rps</span></div>
-            <div class="sub-val">Basma: 76.1 °C</div>
-          </div>
-          <div class="live-card">
-            <div class="ttl">Dış Fan</div>
-            <div class="val">6<span class="unit">/8 adım</span></div>
-            <div class="sub-val">Standart mod</div>
-          </div>
-          <div class="live-card">
-            <div class="ttl">Kompresör gövde</div>
-            <div class="val">62.4<span class="unit">°C</span></div>
-            <div class="sub-val">R8T sensörü</div>
-          </div>
-        </div>
-
-        <div class="section-label">Sıcaklık Probları</div>
-        <div class="card">
-          <div class="row"><span class="label">Hava sıcaklığı R1T <span class="sub">Outdoor air</span></span><span class="value live" id="r1t">28.4 °C</span></div>
-          <div class="row"><span class="label">Akümülatör girişi R3T</span><span class="value live">14.2 °C</span></div>
-          <div class="row"><span class="label">SC ısı eşanjörü gaz R6T</span><span class="value live">22.7 °C</span></div>
-          <div class="row"><span class="label">Bobin (hex) R7T</span><span class="value live">36.8 °C</span></div>
-          <div class="row"><span class="label">SC ısı eşanjörü sıvı</span><span class="value live">29.1 °C</span></div>
-          <div class="row"><span class="label">Hex sıvı sıcaklığı</span><span class="value live">42.5 °C</span></div>
-        </div>
-
-        <div class="section-label">Genleşme Valfleri (EV)</div>
-        <div class="live-grid">
-          <div class="live-card">
-            <div class="ttl">EV Ana (Y1E)</div>
-            <div class="val">412<span class="unit">/480</span></div>
-            <div class="sub-val">86% açık</div>
-          </div>
-          <div class="live-card">
-            <div class="ttl">EV Injection</div>
-            <div class="val">134<span class="unit">/480</span></div>
-            <div class="sub-val">28% açık</div>
-          </div>
-        </div>
-
-        <div class="section-label">Solenoidler & Isıtıcılar</div>
-        <div class="card">
-          <div class="row"><span class="label">4-yollu valf</span><span class="value ok">● Soğutma</span></div>
-          <div class="row"><span class="label">SV (yağ ayırıcı 1)</span><span class="value">Kapalı</span></div>
-          <div class="row"><span class="label">SV (akümülatör yağ dönüşü)</span><span class="value">Kapalı</span></div>
-          <div class="row"><span class="label">Crank case heater 1</span><span class="value">Kapalı</span></div>
-          <div class="row"><span class="label">Crank case heater 2</span><span class="value">Kapalı</span></div>
-        </div>
-
-        <div class="caption">📡 Veri 1 saniyede bir güncelleniyor. APK kaynaklı 80+ parametre + PDF canlı sensörleri.</div>
-      </div>
-
-      <!-- CHART -->
-      <div class="tab-content" id="m-chart">
-        <div class="chart-card">
-          <h4>Yüksek/Düşük Basınç (son 5 dk)</h4>
-          <svg viewBox="0 0 300 80" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="gradHP" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#ff3b30" stop-opacity="0.4"/>
-                <stop offset="100%" stop-color="#ff3b30" stop-opacity="0"/>
-              </linearGradient>
-              <linearGradient id="gradLP" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#007aff" stop-opacity="0.3"/>
-                <stop offset="100%" stop-color="#007aff" stop-opacity="0"/>
-              </linearGradient>
-            </defs>
-            <path d="M0,30 L20,28 L40,32 L60,25 L80,22 L100,20 L120,18 L140,22 L160,20 L180,17 L200,15 L220,18 L240,16 L260,19 L280,16 L300,18 L300,80 L0,80 Z" fill="url(#gradHP)" stroke="none"/>
-            <path d="M0,30 L20,28 L40,32 L60,25 L80,22 L100,20 L120,18 L140,22 L160,20 L180,17 L200,15 L220,18 L240,16 L260,19 L280,16 L300,18" fill="none" stroke="#ff3b30" stroke-width="1.5"/>
-            <path d="M0,62 L20,60 L40,64 L60,58 L80,56 L100,55 L120,53 L140,57 L160,55 L180,52 L200,50 L220,53 L240,51 L260,54 L280,51 L300,53 L300,80 L0,80 Z" fill="url(#gradLP)" stroke="none"/>
-            <path d="M0,62 L20,60 L40,64 L60,58 L80,56 L100,55 L120,53 L140,57 L160,55 L180,52 L200,50 L220,53 L240,51 L260,54 L280,51 L300,53" fill="none" stroke="#007aff" stroke-width="1.5"/>
-          </svg>
-          <div style="display:flex; gap:14px; font-size:11px; color:#8e8e93; margin-top:4px;">
-            <span><span style="color:#ff3b30;">●</span> HP 3.21 MPa</span>
-            <span><span style="color:#007aff;">●</span> LP 0.92 MPa</span>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <h4>Kompresör Devirleri (son 5 dk)</h4>
-          <svg viewBox="0 0 300 80" preserveAspectRatio="none">
-            <path d="M0,40 L40,38 L80,32 L120,28 L160,30 L200,25 L240,28 L280,22 L300,24" fill="none" stroke="#0096DF" stroke-width="1.8"/>
-            <path d="M0,55 L40,53 L80,48 L120,44 L160,45 L200,42 L240,44 L280,40 L300,42" fill="none" stroke="#0073b8" stroke-width="1.8" stroke-dasharray="3,2"/>
-          </svg>
-          <div style="display:flex; gap:14px; font-size:11px; color:#8e8e93; margin-top:4px;">
-            <span><span style="color:#0096DF;">●</span> INV1 — 68 rps</span>
-            <span><span style="color:#0073b8;">●</span> INV2 — 52 rps</span>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <h4>Basma Hattı Sıcaklıkları</h4>
-          <svg viewBox="0 0 300 80" preserveAspectRatio="none">
-            <path d="M0,30 L40,28 L80,24 L120,20 L160,22 L200,18 L240,20 L280,16 L300,18" fill="none" stroke="#ff9500" stroke-width="1.8"/>
-            <path d="M0,40 L40,38 L80,34 L120,30 L160,32 L200,28 L240,30 L280,26 L300,28" fill="none" stroke="#ff3b30" stroke-width="1.8"/>
-          </svg>
-          <div style="display:flex; gap:14px; font-size:11px; color:#8e8e93; margin-top:4px;">
-            <span><span style="color:#ff9500;">●</span> R21T 78.3°C</span>
-            <span><span style="color:#ff3b30;">●</span> R22T 76.1°C</span>
-          </div>
-        </div>
-
-        <div class="caption">⏺ Kayda al butonuyla replay için saklayabilirsin (APK'daki replay özelliği).</div>
-      </div>
-
-      <!-- TABLE -->
-      <div class="tab-content" id="m-table">
-        <div class="section-label">Mod 1 — Tüm İzleme Parametreleri</div>
-        <div class="card">
-          <div class="row"><span class="label"><span class="code-badge m1">1-0</span>Ana/Köle</span><span class="value">Ana</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-1</span>Düşük gürültü durumu</span><span class="value">Normal</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-4</span>Defrost seçim</span><span class="value">Normal</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-5</span>Te ayarı</span><span class="value">Otomatik</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-6</span>Tc ayarı</span><span class="value">Otomatik</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-10</span>Bağlı iç ünite</span><span class="value">8</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-21</span>HP kodu</span><span class="value">12 HP</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-32</span>Pano durumu</span><span class="value ok">Normal</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-34</span>Sonraki kaçak tespit</span><span class="value">147 gün</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-42</span>Yüksek basınç</span><span class="value live">3.21 MPa</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-43</span>Düşük basınç</span><span class="value live">0.92 MPa</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-46</span>R21T basma</span><span class="value live">78.3 °C</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-47</span>R22T basma</span><span class="value live">76.1 °C</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-48</span>R8T kompresör gövde</span><span class="value live">62.4 °C</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-49</span>R1T hava</span><span class="value live">28.4 °C</span></div>
-          <div class="row"><span class="label"><span class="code-badge m1">1-53</span>Kompresör saati</span><span class="value">×100 = 4720 saat</span></div>
-        </div>
-        <div class="caption">📌 Sol kod = dış ünite 7-segment ekranındaki kod. Senin "1-42" basıp gördüğün şey, app'te aynı satırda.</div>
-      </div>
-
-      <!-- IU -->
-      <div class="tab-content" id="m-iu">
-        <div class="section-label">Bağlı 8 iç ünite</div>
-
-        <div class="iu-card">
-          <div class="iu-head"><span class="iu-name">IU 1 — Kasalı (FXFQ)</span><span class="iu-mode cool">❄️ Soğutma</span></div>
-          <div class="iu-grid">
-            <div><div class="lbl">Set</div><div class="v">22 °C</div></div>
-            <div><div class="lbl">Hava</div><div class="v">23.4</div></div>
-            <div><div class="lbl">Sıvı</div><div class="v">10.2</div></div>
-            <div><div class="lbl">Gaz</div><div class="v">8.8</div></div>
-          </div>
-        </div>
-
-        <div class="iu-card">
-          <div class="iu-head"><span class="iu-name">IU 2 — Kasalı (FXFQ)</span><span class="iu-mode cool">❄️ Soğutma</span></div>
-          <div class="iu-grid">
-            <div><div class="lbl">Set</div><div class="v">23 °C</div></div>
-            <div><div class="lbl">Hava</div><div class="v">24.1</div></div>
-            <div><div class="lbl">Sıvı</div><div class="v">11.0</div></div>
-            <div><div class="lbl">Gaz</div><div class="v">9.4</div></div>
-          </div>
-        </div>
-
-        <div class="iu-card">
-          <div class="iu-head"><span class="iu-name">IU 3 — Kanallı (FXSQ)</span><span class="iu-mode off">⏸ Termo-OFF</span></div>
-          <div class="iu-grid">
-            <div><div class="lbl">Set</div><div class="v">22 °C</div></div>
-            <div><div class="lbl">Hava</div><div class="v">22.0</div></div>
-            <div><div class="lbl">Sıvı</div><div class="v">17.6</div></div>
-            <div><div class="lbl">Gaz</div><div class="v">17.2</div></div>
-          </div>
-        </div>
-
-        <div class="iu-card">
-          <div class="iu-head"><span class="iu-name">IU 4 — Kanallı (FXSQ)</span><span class="iu-mode cool">❄️ Soğutma</span></div>
-          <div class="iu-grid">
-            <div><div class="lbl">Set</div><div class="v">21 °C</div></div>
-            <div><div class="lbl">Hava</div><div class="v">22.7</div></div>
-            <div><div class="lbl">Sıvı</div><div class="v">9.8</div></div>
-            <div><div class="lbl">Gaz</div><div class="v">8.1</div></div>
-          </div>
-        </div>
-
-        <div class="iu-card">
-          <div class="iu-head"><span class="iu-name">IU 5 — Duvar (FXAQ)</span><span class="iu-mode err">⚠️ Hata U4</span></div>
-          <div class="iu-grid">
-            <div><div class="lbl">Set</div><div class="v">—</div></div>
-            <div><div class="lbl">Hava</div><div class="v">—</div></div>
-            <div><div class="lbl">Sıvı</div><div class="v">—</div></div>
-            <div><div class="lbl">Gaz</div><div class="v">—</div></div>
-          </div>
-        </div>
-
-        <div class="iu-card">
-          <div class="iu-head"><span class="iu-name">IU 6 — Kasalı (FXFQ)</span><span class="iu-mode cool">❄️ Soğutma</span></div>
-          <div class="iu-grid">
-            <div><div class="lbl">Set</div><div class="v">22 °C</div></div>
-            <div><div class="lbl">Hava</div><div class="v">23.6</div></div>
-            <div><div class="lbl">Sıvı</div><div class="v">10.4</div></div>
-            <div><div class="lbl">Gaz</div><div class="v">8.9</div></div>
-          </div>
-        </div>
-
-        <div class="caption">8 iç ünite, 5 aktif. APK'nın #FOR/0x50 adres bloğundan toplanır. Set point + hava/sıvı/gaz sıcaklıkları + EV pulse gerçek değerler.</div>
-      </div>
-    </div>
-
-    <!-- ============ HISTORY ============ -->
-    <div class="screen" id="screen-history">
-      <div class="top-bar">
-        <button class="back-btn" onclick="show('screen-home')">‹ Ana Menü</button>
-        <div class="top-title">Geçmiş & Tanı</div>
-      </div>
-      <div style="padding: 14px 16px 30px;">
-
-        <div class="err-card ok">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div class="err-code">✓</div>
-            <div>
-              <div class="err-title">Aktif hata yok</div>
-              <div style="font-size:12px; color:#555; margin-top:2px;">Sistem sağlıklı çalışıyor</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="section-label">Son arıza kayıtları</div>
-
-        <div class="err-card warn">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div class="err-code">U4</div>
-            <div>
-              <div class="err-title">İç ünite haberleşme hatası</div>
-              <div style="font-size:11px; color:#555;">3 gün önce · IU5 — Duvar tipi</div>
-            </div>
-          </div>
-          <div class="err-causes">
-            <b>Olası sebepler:</b><br>
-            • İç ünite ile dış ünite arasındaki kablolama hatası<br>
-            • İç ünite PCB arızası<br>
-            • Stop valfi kapalı
-          </div>
-        </div>
-
-        <div class="err-card">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div class="err-code">F3</div>
-            <div>
-              <div class="err-title">Anormal yüksek basma sıcaklığı</div>
-              <div style="font-size:11px; color:#555;">12 gün önce · INV1 kompresör</div>
-            </div>
-          </div>
-          <div class="err-causes">
-            <b>Olası sebepler:</b><br>
-            • Soğutucu eksikliği<br>
-            • Kirli ısı eşanjörü<br>
-            • Tıkanık soğutucu boruları<br>
-            • Defektif basma hattı termistörü
-          </div>
-        </div>
-
-        <div class="err-card">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div class="err-code">L5</div>
-            <div>
-              <div class="err-title">INV başlatma hatası (mekanik kilit)</div>
-              <div style="font-size:11px; color:#555;">28 gün önce · INV1 kompresör</div>
-            </div>
-          </div>
-          <div class="err-causes">
-            <b>Olası sebepler:</b><br>
-            • Kompresör motor sargı arızası<br>
-            • Kompresör mekanik kilit<br>
-            • Defektif inverter PCB
-          </div>
-        </div>
-
-        <div class="section-label">Sayaçlar</div>
-        <div class="counter-grid">
-          <div class="counter">
-            <div class="ttl">Kompresör çalışma</div>
-            <div class="v">4720 <small>saat</small></div>
-          </div>
-          <div class="counter">
-            <div class="ttl">Sonraki kaçak tespiti</div>
-            <div class="v">147 <small>gün</small></div>
-          </div>
-          <div class="counter">
-            <div class="ttl">Bağlı iç ünite</div>
-            <div class="v">8 <small>/ 64</small></div>
-          </div>
-          <div class="counter">
-            <div class="ttl">Bağlı dış ünite</div>
-            <div class="v">1 <small>/ 3</small></div>
-          </div>
-        </div>
-
-        <div class="section-label">Son retry kayıtları</div>
-        <div class="card">
-          <div class="row"><span class="label">En son retry <span class="sub">1-23</span></span><span class="value warn">HP koruması (3 önce)</span></div>
-          <div class="row"><span class="label">1 önceki retry <span class="sub">1-24</span></span><span class="value warn">INV akım drop (5 önce)</span></div>
-          <div class="row"><span class="label">2 önceki retry <span class="sub">1-25</span></span><span class="value">Veri yok</span></div>
-        </div>
-
-        <div class="section-label">Son kaçak tespit sonuçları</div>
-        <div class="card">
-          <div class="row"><span class="label">En son <span class="sub">2-86 sonucu</span></span><span class="value ok">✓ Normal</span></div>
-          <div class="row"><span class="label">1 önceki</span><span class="value warn">Dış sıcaklık aralık dışı</span></div>
-          <div class="row"><span class="label">2 önceki</span><span class="value ok">✓ Normal</span></div>
-        </div>
-
-        <div class="caption">📚 Hata kodu açıklamaları AC Monitoring Tool APK'sının 190 kodluk veritabanından alınır.</div>
-      </div>
-    </div>
-
-    <!-- ============ CONFIG ============ -->
-    <div class="screen" id="screen-config">
-      <div class="top-bar">
-        <button class="back-btn" onclick="show('screen-home')">‹ Ana Menü</button>
-        <div class="top-title">Yapılandırma</div>
-      </div>
-      <div style="padding: 12px 16px 80px;">
-
-        <div class="section-label">Kontrol Modu</div>
-        <div class="card">
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-0</span>Soğutma/Isıtma seçimi</span>
-            <span class="value">Bireysel <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-1</span>SOĞ/ISIT birleşik adres</span>
-            <span class="value">0 <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-13</span>ACNSS adresi</span>
-            <span class="value">0 <span class="arrow">›</span></span>
-          </div>
-        </div>
-
-        <div class="section-label">Konfor & Hedef Sıcaklık</div>
-        <div class="card">
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-8</span>Te hedef sıcaklığı (soğutma)</span>
-            <span class="value">Otomatik <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-9</span>Tc hedef sıcaklığı (ısıtma)</span>
-            <span class="value">Otomatik <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-81</span>Soğutma konfor</span>
-            <span class="value">Ilımlı <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-82</span>Isıtma konfor</span>
-            <span class="value">Ilımlı <span class="arrow">›</span></span>
-          </div>
-        </div>
-
-        <div class="section-label">Düşük Gürültü</div>
-        <div class="card">
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-22</span>Gece sessiz seviye</span>
-            <span class="value">Kapalı <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-25</span>Harici düşük gürültü seviyesi</span>
-            <span class="value">Seviye 2 <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-26</span>Başlama zamanı</span>
-            <span class="value">22:00 <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-27</span>Bitiş zamanı</span>
-            <span class="value">08:00 <span class="arrow">›</span></span>
-          </div>
-        </div>
-
-        <div class="section-label">Talep Kontrolü</div>
-        <div class="card">
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-30</span>Talep 1 seviyesi</span>
-            <span class="value">%70 <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-31</span>Talep 2 seviyesi</span>
-            <span class="value">%40 <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-32</span>Sürekli talep</span>
-            <span class="value">Kapalı <span class="arrow">›</span></span>
-          </div>
-        </div>
-
-        <div class="section-label">Otomatik Kaçak Tespit</div>
-        <div class="card">
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-14</span>Şarj edilen R410A miktarı</span>
-            <span class="value">15-20 kg <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-85</span>Kontrol aralığı</span>
-            <span class="value">365 gün <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-86</span>Otomatik etkinleştirme</span>
-            <span class="value">Devre dışı <span class="arrow">›</span></span>
-          </div>
-        </div>
-
-        <div class="section-label">Kurulum & Yükseklik</div>
-        <div class="card">
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-18</span>Yüksek statik basınç (ESP)</span>
-            <span class="value">Kapalı <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-35</span>Dış &gt; 40m iç altında</span>
-            <span class="value">Standart <span class="arrow">›</span></span>
-          </div>
-          <div class="row clickable" onclick="addPending(this)">
-            <span class="label"><span class="code-badge m2">2-49</span>Dış &gt; 50m iç üzerinde</span>
-            <span class="value">Kapalı <span class="arrow">›</span></span>
-          </div>
-        </div>
-
-        <div class="caption">💡 Kod rozeti = dış ünite BS düğmesindeki yer. Değer değiştirince alta yazma çubuğu gelir, "Cihaza Yaz" diyene kadar uygulanmaz.</div>
-      </div>
-
-      <!-- Pending changes bar -->
-      <div class="write-bar" id="write-bar" style="display:none;">
-        <div class="info"><b id="pending-count">0 değişiklik</b> bekliyor</div>
-        <button onclick="alert('Cihaza yazılıyor...')">Cihaza Yaz</button>
-      </div>
-    </div>
-
-    <!-- ============ ACTION ============ -->
-    <div class="screen" id="screen-action">
-      <div class="top-bar">
-        <button class="back-btn" onclick="show('screen-home')">‹ Ana Menü</button>
-        <div class="top-title">Servis Eylemi</div>
-      </div>
-      <div style="padding: 12px 16px 30px;">
-
-        <div class="caption" style="background:#fff3e0; padding:10px 12px; border-radius:10px; color:#ff9500; margin-bottom:12px; font-size:12px;">
-          ⚠️ Bu eylemler sistem davranışını etkiler. Her birinin riski ve geri alma yolu kart üstünde belirtilmiştir.
-        </div>
-
-        <div class="section-label">Devreye Alma & Test</div>
-
-        <div class="act-card">
-          <div class="act-head">
-            <span class="act-icon">🔌</span>
-            <span class="act-title">Çapraz kablolama kontrolü</span>
-            <span class="act-code">2-5</span>
-          </div>
-          <div class="act-desc">Tüm iç üniteleri yüksek fan'a zorlar. Hangi ünite eksik haberleşiyor görmek için.</div>
-          <div class="act-pre">Ön koşul: Sistem çalışmıyor olmalı · Geri alma: BS3 ile veya tekrar 2-5-0</div>
-          <button class="act-btn">Başlat</button>
-        </div>
-
-        <div class="act-card">
-          <div class="act-head">
-            <span class="act-icon">🌬️</span>
-            <span class="act-title">Zorlanmış termostat-açık (test çalıştırma)</span>
-            <span class="act-code">2-6</span>
-          </div>
-          <div class="act-desc">Tüm iç üniteleri termostat-açık çalıştırır. Sistem davranışı testi için.</div>
-          <div class="act-pre">Geri alma: BS3 ile veya 2-6-0</div>
-          <button class="act-btn">Başlat</button>
-        </div>
-
-        <div class="section-label">Soğutucu İşlemleri</div>
-
-        <div class="act-card warn">
-          <div class="act-head">
-            <span class="act-icon">💧</span>
-            <span class="act-title">Manuel soğutucu şarj</span>
-            <span class="act-code">2-20</span>
-          </div>
-          <div class="act-desc">Kompresör çalışırken manuel R410A şarj moduna geçer. "Başlatma" 7-segment ekranda görünür.</div>
-          <div class="act-pre"><b>Şarj öncesi 2-14'ten kg girişi yapılmalı.</b></div>
-          <button class="act-btn warn">Şarj Modunu Başlat</button>
-        </div>
-
-        <div class="act-card crit">
-          <div class="act-head">
-            <span class="act-icon">⏬</span>
-            <span class="act-title">Pump-down / Vakum (geri toplama)</span>
-            <span class="act-code">2-21</span>
-          </div>
-          <div class="act-desc">Tüm EV'ler tam açılır, kompresör durur. Soğutucu geri toplama şişesine alınır.</div>
-          <div class="act-pre"><b>KRİTİK:</b> Servis hortumları vakumlu olmalı, geri toplama ünitesi hazır olmalı. Yanlış yapılırsa şarj kaybı.</div>
-          <button class="act-btn crit" onclick="document.getElementById('confirm-modal').classList.add('show')">Pump-Down Başlat</button>
-        </div>
-
-        <div class="act-card warn">
-          <div class="act-head">
-            <span class="act-icon">🔍</span>
-            <span class="act-title">Otomatik kaçak tespiti</span>
-            <span class="act-code">2-86</span>
-          </div>
-          <div class="act-desc">Sistemi soğutucu kaçak tespit moduna alır. ~30 dk sürer, sistem boşa düşer.</div>
-          <div class="act-pre">Sonuç Geçmiş & Tanı'ya kaydedilir.</div>
-          <button class="act-btn warn">Tespit Çalıştır</button>
-        </div>
-
-        <div class="section-label">Tanı & Onarım</div>
-
-        <div class="act-card warn">
-          <div class="act-head">
-            <span class="act-icon">⚡</span>
-            <span class="act-title">Güç transistor kontrol modu</span>
-            <span class="act-code">2-28</span>
-          </div>
-          <div class="act-desc">İnvertör 6 transistorden 10 Hz çıkış verir. INV kompresör arızası teşhisi.</div>
-          <div class="act-pre"><b>Önemli:</b> Kompresör U/V/W bağlantıları çıkarılmış olmalı. İnvertör check modülü gerekli.</div>
-          <button class="act-btn warn">Test Modunu Aç</button>
-        </div>
-
-        <div class="act-card crit">
-          <div class="act-head">
-            <span class="act-icon">🚨</span>
-            <span class="act-title">Acil durum — Kompresör devre dışı</span>
-            <span class="act-code">2-38/39/40</span>
-          </div>
-          <div class="act-desc">Bozuk kompresörü devreden çıkarır. Parça gelene kadar diğer ünitelerle çalışmaya devam et.</div>
-          <div class="act-pre"><b>Etkin kalır:</b> Mod 2'den çıkınca otomatik geri dönmez. Manuel iptal gerekir.</div>
-          <button class="act-btn crit">Kompresör Seç & Devre Dışı Bırak</button>
-        </div>
-
-        <div class="act-card">
-          <div class="act-head">
-            <span class="act-icon">⏸️</span>
-            <span class="act-title">U4 atlama (24 saat)</span>
-            <span class="act-code">2-90</span>
-          </div>
-          <div class="act-desc">Bazı iç ünitelerin elektriği kapalıyken sistem çalışmaya devam eder. 24 saat limit.</div>
-          <div class="act-pre">Toplam kapasite < %30 nominal · En uzak iç < 120 m</div>
-          <button class="act-btn">Atlama Modunu Aç</button>
-        </div>
-
-      </div>
-
-      <!-- Confirm Modal -->
-      <div class="modal-back" id="confirm-modal">
-        <div class="modal">
-          <h4>⏬ Pump-Down başlatılacak</h4>
-          <p>Tüm genleşme valfleri tam açılacak, kompresör duracak. Sistem soğutucuyu geri toplama moduna geçecek.</p>
-          <div class="modal-warn">
-            ⚠️ Servis hortumları vakumlanmış ve geri toplama şişesi hazır mı?
-          </div>
-          <div class="modal-btns">
-            <button class="modal-btn cancel" onclick="document.getElementById('confirm-modal').classList.remove('show')">İptal</button>
-            <button class="modal-btn confirm" onclick="alert('Pump-down başladı, t01 ekrandadır.'); document.getElementById('confirm-modal').classList.remove('show')">Evet, Başlat</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
+  <div class="conn-pill">
+    <div class="conn-dot" id="connDot"></div>
+    <span class="conn-txt" id="connTxt">Bağlanıyor…</span>
   </div>
 </div>
 
-<div class="info-box">
-  <h3>🧠 Bu önizlemenin mantığı</h3>
-  <p>
-    <b>Tek omurga, dört giriş kapısı.</b> Saha teknisyeni cihaza yaklaşırken zihninde 4 sorudan biri olur:
-    <i>Şimdi nasıl çalışıyor? · Ne oldu, neden? · Bir ayar değiştireyim · Bir eylem yapayım.</i>
-    Her görev kendi ekranında, ama arka planda <b>tek bir parametre kataloğu</b> var.
-  </p>
-  <p style="margin-top:8px;">
-    <b>Kaynaklar:</b>
-    <code>📊 Canlı İzleme</code> = AC Monitoring APK (~80 parametre + iç üniteler) ·
-    <code>📜 Geçmiş</code> = APK 190 hata kodu veritabanı + Mod 1 retry/sayaçlar ·
-    <code>⚙️ Yapılandırma</code> = Configurator (TR çeviri) + PDF Mod 2 kodları ·
-    <code>🛠️ Eylem</code> = PDF Mod 2 eylem komutları (pump-down, vakum, test).
-  </p>
-  <p style="margin-top:8px;">
-    <b>Köprü:</b> Her parametrede <code>2-8</code> gibi bir kod rozeti. Bu, dış ünite 7-segment ekranındaki yerin
-    aynısı — teknisyen kafasındaki haritayla app'i eşleştirebilsin diye.
-  </p>
+<div class="body">
+
+  <!-- Error / status banner -->
+  <div class="card err ok" id="errCard">
+    <div class="head">
+      <span class="tag" id="errTag">DURUM</span>
+      <span class="code" id="errCode">—</span>
+    </div>
+    <div class="summary" id="errSummary">Veri bekleniyor…</div>
+    <div class="hint" id="errHint">MQTT broker'a bağlanılıyor.</div>
+  </div>
+
+  <!-- Cihaz kartı (topology) -->
+  <div class="card">
+    <div class="id-head">
+      <div class="id-icon">⚙</div>
+      <div style="flex:1">
+        <div class="id-name" id="famName">—</div>
+        <div class="id-sub"><span id="famHint">topology fingerprint okunuyor</span><span class="tag">TAHMİN</span></div>
+      </div>
+    </div>
+    <div class="id-grid">
+      <div class="id-row"><span class="l">Modül</span><span class="v" id="fpModules">—</span></div>
+      <div class="id-row"><span class="l">Sensör (qty)</span><span class="v" id="fpSensors">—</span></div>
+      <div class="id-row"><span class="l">INV / STD komp</span><span class="v" id="fpInv">—</span></div>
+      <div class="id-row"><span class="l">Fan / EV</span><span class="v" id="fpFanEv">—</span></div>
+      <div class="id-row"><span class="l">4-way / SV</span><span class="v" id="fp4wSv">—</span></div>
+      <div class="id-row"><span class="l">İç ünite</span><span class="v" id="fpIdu">—</span></div>
+    </div>
+    <div class="raw-row">
+      raw 0x00 payload
+      <div class="h" id="fpRaw">—</div>
+    </div>
+  </div>
+
+  <!-- Sub=0x00 sistem durumu -->
+  <div class="sect">SİSTEM (sub=0x00)</div>
+  <div class="card">
+    <div class="row"><span class="l">Güç durumu</span><span class="v live" id="sPower">—</span></div>
+    <div class="row"><span class="l">Mod</span><span class="v live" id="sMode">—</span></div>
+    <div class="row"><span class="l">Fan kademesi</span><span class="v live" id="sFan">—</span></div>
+    <div class="row"><span class="l">Hedef sıcaklık</span><span class="v live" id="sSet">—</span></div>
+    <div class="row"><span class="l">Hata bayrağı</span><span class="v live" id="sErrFlag">—</span></div>
+  </div>
+
+  <!-- Sub=0x20 sıcaklık sensörleri (10×) -->
+  <div class="sect">DIŞ ÜNİTE SENSÖRLERİ (sub=0x20, 16-bit LE)</div>
+  <div class="card" id="tempCard"></div>
+
+  <!-- Sub=0x21 ham basınç bloğu -->
+  <div class="sect">BASINÇ BLOĞU (sub=0x21, ham)</div>
+  <div class="card">
+    <div class="row"><span class="l">Ham byte (hex)<small>kompresör çalışınca değer akacak; decode kalibrasyon bekliyor</small></span><span class="v live" id="sub21">—</span></div>
+  </div>
+
+  <div class="footer">
+    <div>cihaz: <span id="macTxt">—</span></div>
+    <div id="lastUpdate">—</div>
+  </div>
 </div>
 
 <script>
-  // Navigation
-  function show(id) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    document.querySelector('.app').scrollTop = 0;
-  }
+/* === BTSC honest monitor — pairs with esp32_ble_bridge v1.5 ============== */
+const BROKER = 'wss://broker.emqx.io:8084/mqtt';
+const params = new URLSearchParams(location.search);
+const MAC = (params.get('mac') || localStorage.getItem('btsc_mac') || 'D48AFC9E85C8').toUpperCase();
+const T_DATA = 'btsc/' + MAC + '/data';
+const T_FP   = 'btsc/' + MAC + '/fp';
+document.getElementById('macTxt').textContent = MAC;
 
-  // Tabs
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const tabId = tab.getAttribute('data-tab');
-      const parent = tab.parentElement.parentElement;
-      parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      tab.classList.add('active');
-      document.getElementById(tabId).classList.add('active');
-    });
+/* ── Daikin error decoder (saha kanıtlı: byte[5] nibble + byte[6] gray) ── */
+const CLASS_TBL = [null,null,'E','E','F','H','J','L','P','U','A','A',null,null,null,null];
+function grayToBin(g){let b=g;g>>=1;while(g){b^=g;g>>=1;}return b;}
+function decodeErr(em,eg){
+  if(em==null||em===0||em===0xFF) return null;
+  const cls=CLASS_TBL[(em>>4)&0xF]; if(!cls) return null;
+  return cls+(em&0xF)+'-'+grayToBin(eg|0).toString().padStart(2,'0');
+}
+const ERR_INFO = {
+  'U0-01':['Soğutucu eksik','Şarj + kaçak testi'],
+  'U1-01':['Faz sırası ters','Dış ünite L1↔L2 kabloları'],
+  'U1-04':['Açık faz / 3-faz dengesizliği','L1-L2-L3 voltaj + sigorta + reverse-phase relay'],
+  'U2-01':['Güç kaynağı yetersiz','Şebeke gerilimi düşük/yüksek'],
+  'U4-00':['İç-Dış haberleşme','F1-F2 transmisyon hattı'],
+  'U5-00':['Uzaktan kumanda kopuk','P1-P2 kablosu'],
+  'UA-00':['İç-Dış kombinasyon uyumsuz','Kapasite eşleşmesi'],
+  'UH-00':['Adres uyumsuzluğu','İç ünite çakışan adres'],
+  'E1-01':['Dış ünite PCB','Ana PCB değişimi'],
+  'E3-00':['Yüksek basınç koruma','Eşanjör + dış fan + R8T probu'],
+  'E4-00':['Düşük basınç koruma','Soğutucu eksik / EV kapalı / sıvı hat'],
+  'E5-00':['INV kompresör motor kilit','Kompresör direnç + invertör PCB'],
+  'E6-00':['STD kompresör motor kilit','Kontaktör + sargı testi'],
+  'E7-00':['Dış fan motor kilit','Fan motoru + kapasitör'],
+  'E9-00':['Genleşme valfi (EV) hatası','EV bobini + kablolama'],
+  'F3-00':['Deşarj sıcaklığı yüksek','R3T sensör + soğutucu şarj'],
+  'F6-00':['Yüksek basınç anormal','R5T/R6T + eşanjör tıkanıklığı'],
+  'H3-00':['HPS arızalı','Yüksek basınç switch'],'H4-00':['LPS arızalı','Düşük basınç switch'],
+  'H7-00':['Dış fan sinyal hatası','Fan tachometer'],'H9-00':['Dış ortam sensörü','R1T direnç'],
+  'J3-00':['Deşarj boru sensörü','R3T direnç'],'J5-00':['Emiş boru sensörü','R6T direnç'],
+  'J6-00':['Dış eşanjör sensörü','R4T direnç'],
+  'L4-00':['Eşanjör sıcak (invertör)','Heat sink temizliği'],
+  'L5-00':['INV çıkış akımı aşırı','Kompresör + invertör PCB'],
+  'L8-00':['Akım dengesizliği','Şebeke + DC bus'],'L9-00':['Stall önleme','Soğutucu + EV açıklığı'],
+  'P1-00':['INV DC kondansatör','Invertör PCB'],'P4-00':['INV radyatör sensörü','IGBT sensör'],
+};
+
+/* ── Family is a hint, not a verdict — derived from raw0x00 byte 5 (4-way valve qty)
+       and byte 1 (INV count). We surface it as a guess; real model needs miconID
+       lookup which the firmware doesn't read yet. ── */
+function familyGuess(raw){
+  if(!raw) return {label:'—',hint:'topology yok'};
+  const inv = parseInt(raw.substr(2,2),16)||0;
+  const std = parseInt(raw.substr(4,2),16)||0;
+  const wv  = parseInt(raw.substr(10,2),16)||0;
+  if(wv>=2)              return {label:'Heat Recovery (HR)', hint:'REYQ / VRV HR ailesi · '+(inv+std)+' kompresör'};
+  if(wv===1)             return {label:'Heat Pump (HP)',     hint:'RXYQ / VRV HP ailesi · '+(inv+std)+' kompresör'};
+  if(wv===0&&inv+std>0)  return {label:'Cooling-only',       hint:'RZ* / SkyAir ailesi'};
+  return {label:'Belirsiz', hint:'topology desteklenmiyor'};
+}
+
+const MODE_TXT = {0:'Sadece Fan',1:'Isıtma',2:'Soğutma',3:'Otomatik',4:'Kurutma'};
+
+const SENSOR_LABELS = [
+  ['R1T','Dış hava sıcaklığı'],
+  ['R2T','Eşanjör çıkış'],
+  ['R3T','Akümülatör girişi / discharge'],
+  ['R4T','Eşanjör (orta)'],
+  ['R5T','Aspirasyon (suction)'],
+  ['R6T','SC HEX gaz'],
+  ['R7T','SC HEX sıvı / liquid'],
+  ['R8T','Kompresör gövde'],
+  ['R9T','Yağ ayırıcı / discharge 2'],
+  ['R10T','Defrost / extra'],
+];
+
+/* ── State + render ── */
+const state = { fp:null, data:null, lastDataTs:0 };
+
+function $(id){return document.getElementById(id);}
+function setT(id,v){const el=$(id); if(el) el.textContent=v;}
+function pillState(s,t){const d=$('connDot'),x=$('connTxt'); d.className='conn-dot'+(s?' '+s:''); x.textContent=t;}
+
+function renderFp(){
+  const fp = state.fp;
+  if(!fp || !fp.ready){ return; }
+  const r = fp.raw0x00 || '';
+  const fam = familyGuess(r);
+  setT('famName', fam.label);
+  setT('famHint', fam.hint);
+  setT('modelHint', fam.label);
+  const b = (i)=> r.length>=i*2+2 ? parseInt(r.substr(i*2,2),16) : null;
+  const fmt = (v)=> v==null ? '—' : v;
+  setT('fpModules', fmt(fp.modules || 1));
+  setT('fpSensors', fmt(b(0)));
+  setT('fpInv',     fmt(b(1)) + ' / ' + fmt(b(2)));
+  setT('fpFanEv',   fmt(b(3)) + ' / ' + fmt(b(4)));
+  setT('fp4wSv',    fmt(b(5)) + ' / ' + fmt(b(7)));
+  setT('fpIdu',     fmt(b(9)) + ' / ' + fmt(b(8)));
+  // Pretty-print the raw payload
+  const pretty = r.match(/.{1,2}/g)?.join(' ') || '—';
+  setT('fpRaw', pretty);
+}
+
+function renderError(){
+  const d = state.data;
+  let code = null;
+  if(d){
+    if(d.errMain!=null && d.errSubGray!=null) code = decodeErr(d.errMain, d.errSubGray);
+    if(!code && d.errorDisplay) code = d.errorDisplay;
+  }
+  const card = $('errCard');
+  if(!code){
+    card.classList.add('ok');
+    setT('errTag','DURUM'); setT('errCode','OK');
+    setT('errSummary','Aktif hata yok');
+    setT('errHint','Cihaz normal çalışma modunda. Kompresör/sensör verisi sub=0x10/0x20/0x21 frame\'lerinden okunuyor.');
+    return;
+  }
+  card.classList.remove('ok');
+  setT('errTag','AKTİF HATA'); setT('errCode',code);
+  const info = ERR_INFO[code];
+  setT('errSummary', info ? info[0] : 'Tanımlanmamış kod');
+  setT('errHint',    info ? info[1] : 'ESIE13-01 servis manualına bakın.');
+}
+
+function renderSystem(){
+  const d = state.data || {};
+  const PWR  = d.pwr === 1 ? 'AÇIK' : (d.pwr === 0 ? 'KAPALI' : '—');
+  const MODE = (d.mode!=null) ? (MODE_TXT[d.mode] ?? ('mode '+d.mode)) : '—';
+  setT('sPower', PWR);
+  setT('sMode',  MODE);
+  setT('sFan',   d.fan!=null ? ('kademe '+d.fan) : '—');
+  setT('sSet',   (d.sp!=null && d.sp>-50) ? (Number(d.sp).toFixed(1)+' °C') : '—');
+  setT('sErrFlag', d.errActive==null ? '—' : (d.errActive ? 'AKTİF' : 'temiz'));
+  // Apply muted class for blanks
+  ['sPower','sMode','sFan','sSet','sErrFlag'].forEach(id=>{
+    const el=$(id); if(el) el.classList.toggle('muted', el.textContent==='—');
   });
+}
 
-  // Pending changes
-  let pending = 0;
-  function addPending(row) {
-    pending++;
-    const bar = document.getElementById('write-bar');
-    document.getElementById('pending-count').textContent = pending + ' değişiklik';
-    bar.style.display = 'flex';
-    row.style.background = '#fff3e0';
-    setTimeout(() => row.style.background = '', 1200);
+function renderTemps(){
+  const d = state.data || {};
+  const t = Array.isArray(d.t) ? d.t : null;
+  const card = $('tempCard');
+  card.innerHTML = '';
+  for(let i=0;i<10;i++){
+    const v = t ? t[i] : null;
+    const num = (v==null || v===false) ? null : Number(v);
+    const valid = num!=null && !isNaN(num) && num>-90 && num<150;
+    const label = SENSOR_LABELS[i];
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML =
+      '<span class="l">'+label[0]+' <small>'+label[1]+'</small></span>' +
+      '<span class="v live'+(valid?'':' muted')+'">'+(valid?num.toFixed(1)+' °C':'—')+'</span>';
+    card.appendChild(row);
   }
+}
 
-  /* ─── Live MQTT (replaces preview's random-walk simulation) ─────────── */
-  // Pairs with ESP firmware v1.4 publishing to:
-  //   btsc/<MAC>/data  (retained — sensor + errMain/errSubGray)
-  //   btsc/<MAC>/fp    (retained — topology fingerprint, one-shot at boot)
-  // MAC default below is the bridge this app was built for; override with
-  // ?mac=XXXXXXXXXXXX in the URL or localStorage.btsc_mac.
-  const BROKER = 'wss://broker.emqx.io:8084/mqtt';
-  const params = new URLSearchParams(location.search);
-  const MAC = (params.get('mac') || localStorage.getItem('btsc_mac') || 'D48AFC9E85C8').toUpperCase();
-  const T_DATA = 'btsc/' + MAC + '/data';
-  const T_FP   = 'btsc/' + MAC + '/fp';
+function renderSub21(){
+  const d = state.data || {};
+  const v = d.sub21;
+  const el = $('sub21');
+  if(!v){ el.textContent='—'; el.classList.add('muted'); return; }
+  const pretty = v.match(/.{1,2}/g)?.join(' ') || v;
+  el.textContent = pretty;
+  el.classList.remove('muted');
+}
 
-  const CLASS_TBL = [null,null,'E','E','F','H','J','L','P','U','A','A',null,null,null,null];
-  function grayToBin(g){let b=g;g>>=1;while(g){b^=g;g>>=1;}return b;}
-  function decodeErr(em,eg){
-    if(em==null||em===0||em===0xFF) return null;
-    const cls=CLASS_TBL[(em>>4)&0xF]; if(!cls) return null;
-    return cls+(em&0xF)+'-'+grayToBin(eg|0).toString().padStart(2,'0');
+function render(){
+  renderFp(); renderError(); renderSystem(); renderTemps(); renderSub21();
+  if(state.lastDataTs){
+    const d = new Date(state.lastDataTs);
+    setT('lastUpdate','son: '+d.toLocaleTimeString('tr-TR'));
   }
+}
 
-  const ERR_INFO = {
-    'U0-01':['Soğutucu eksik','Şarj + kaçak testi'],
-    'U1-01':['Faz sırası ters','Dış ünite L1↔L2'],
-    'U1-04':['Açık faz / 3-faz dengesizliği','L1-L2-L3 voltaj + sigorta + reverse-phase relay'],
-    'U2-01':['Güç kaynağı yetersiz','Şebeke gerilimi'],
-    'U4-00':['İç-Dış haberleşme hatası','F1-F2 transmisyon hattı'],
-    'U5-00':['Uzaktan kumanda kopuk','P1-P2 kablosu'],
-    'UA-00':['İç-Dış kombinasyon uyumsuz','Kapasite eşleşmesi'],
-    'UH-00':['Adres uyumsuzluğu','İç ünite çakışan adres'],
-    'E1-01':['Dış ünite PCB','Ana PCB'],
-    'E3-00':['Yüksek basınç koruma','Eşanjör + dış fan + R8T'],
-    'E4-00':['Düşük basınç koruma','Soğutucu + EV + sıvı hat'],
-    'E5-00':['INV kompresör motor kilit','Kompresör + invertör PCB'],
-    'E6-00':['STD kompresör motor kilit','Kontaktör + sargı testi'],
-    'E7-00':['Dış fan motor kilit','Fan motoru + kapasitör'],
-    'E9-00':['EV (genleşme valfi) hatası','EV bobini + kablolama'],
-    'F3-00':['Deşarj sıcaklığı yüksek','R3T + soğutucu şarj'],
-    'F6-00':['Yüksek basınç anormal','R5T/R6T + eşanjör'],
-    'H3-00':['HPS arızalı','Yüksek basınç switch'],
-    'H4-00':['LPS arızalı','Düşük basınç switch'],
-    'H7-00':['Dış fan sinyal hatası','Fan tachometer'],
-    'H9-00':['Dış ortam sensörü','R1T direnç'],
-    'J3-00':['Deşarj boru sensörü','R3T direnç'],
-    'J5-00':['Emiş boru sensörü','R6T direnç'],
-    'J6-00':['Dış eşanjör sensörü','R4T direnç'],
-    'L4-00':['Eşanjör sıcak (invertör)','Heat sink temizliği'],
-    'L5-00':['INV çıkış akımı aşırı','Kompresör + invertör PCB'],
-    'L8-00':['Akım dengesizliği','Şebeke + DC bus'],
-    'L9-00':['Stall önleme (overload)','Soğutucu + EV açıklığı'],
-    'P1-00':['INV DC kondansatör','Invertör PCB'],
-    'P4-00':['INV radyatör sensörü','IGBT sensör'],
-  };
-
-  const FAMILY = {
-    hr:   { label:'Heat Recovery', hint:'REYQ / VRV HR' },
-    hp:   { label:'Heat Pump',     hint:'RXYQ / VRV HP' },
-    cool: { label:'Soğutma',       hint:'RZ* / SkyAir' },
-    unk:  { label:'Bilinmiyor',    hint:'—' },
-  };
-  function detectFamily(r){
-    if(!r) return 'unk';
-    const wv=parseInt(r.substr(10,2),16)||0;
-    const inv=parseInt(r.substr(2,2),16)||0;
-    const std=parseInt(r.substr(4,2),16)||0;
-    if(wv>=2) return 'hr';
-    if(wv===1) return 'hp';
-    if(wv===0&&(inv+std>0)) return 'cool';
-    return 'unk';
+/* ── Stale watcher ── */
+setInterval(()=>{
+  if(state.lastDataTs && Date.now()-state.lastDataTs > 8000){
+    document.body.classList.add('stale');
   }
+}, 2000);
 
-  let lastDataTs = 0;
-  function setText(id,t){const el=document.getElementById(id);if(el)el.textContent=t;}
+/* ── MQTT ── */
+const client = mqtt.connect(BROKER, {
+  clientId:'btsc_'+Math.random().toString(36).slice(2,8),
+  clean:true, reconnectPeriod:3000, connectTimeout:8000,
+});
+client.on('connect',  ()=>{ pillState('ok','MQTT bağlı'); client.subscribe([T_DATA,T_FP]); });
+client.on('close',    ()=> pillState('err','Bağlantı yok'));
+client.on('reconnect',()=> pillState('warn','Bağlanıyor…'));
+client.on('message',(t,p)=>{
+  try{
+    const j = JSON.parse(p.toString());
+    if(t===T_FP)        state.fp = j;
+    else if(t===T_DATA){ state.data = j; state.lastDataTs = Date.now(); document.body.classList.remove('stale'); }
+    render();
+  }catch(e){ console.warn('parse',e); }
+});
 
-  function updateConn(state,label){
-    const dot = document.querySelector('.device-card .ble-dot');
-    if(dot) dot.className = 'ble-dot' + (state==='ok'?'':' '+state);
-    const ble = document.querySelector('.device-card .ble-status');
-    if(ble){
-      const txt = ble.querySelector('span:last-child');
-      if(txt) txt.textContent = label;
-    }
-  }
-
-  function updateError(d){
-    let code=null;
-    if(d){
-      if(d.errMain!=null&&d.errSubGray!=null) code=decodeErr(d.errMain,d.errSubGray);
-      if(!code&&d.errorDisplay) code=d.errorDisplay;
-    }
-    const pill = document.querySelector('.device-card .err-pill');
-    if(!pill) return;
-    if(!code){ pill.textContent='✓ Hata yok'; pill.className='err-pill'; return; }
-    pill.textContent='⚠ '+code;
-    pill.className='err-pill err';
-    const info = ERR_INFO[code];
-    pill.title = info ? (code+' — '+info[0]+' · '+info[1]) : code;
-  }
-
-  // Per-field sanity checks. The original Daikin tool always shows whatever
-  // the AC reports — even with an active error — and only blanks values
-  // that look like sentinels (0xFE25 → -47.5°C, 0xFFFF, 0xFF7C, etc). We
-  // mirror that behaviour so the technician doesn't lose visibility.
-  function safeKpa(v, maxMpa){ return (v!=null && v>=0 && v < maxMpa*1000) ? v : null; }
-  function safeTemp(v){
-    if(v==null) return null;
-    if(v <= -47 || v >= 90) return null;        // 0xFE25 / 0xFFFF → -47.5
-    return v;
-  }
-  function safeHz(v){ return (v!=null && v>=0 && v<=200) ? v : null; }
-
-  function updateData(d){
-    lastDataTs = Date.now();
-    document.querySelector('.app')?.classList.remove('stale');
-
-    // Pressures — show whatever lands in the sane MPa window. Off/protected
-    // units typically push 0 or an out-of-range sentinel, both -> "—".
-    const hp = safeKpa(d.highPressure, 6);
-    const lp = safeKpa(d.lowPressure,  3);
-    setText('hp-val', hp!=null ? (hp/1000).toFixed(2) : '—');
-    setText('lp-val', lp!=null ? (lp/1000).toFixed(2) : '—');
-
-    // Temps — every sensor independently. 0xFE25 sentinel auto-blanks.
-    const out = safeTemp(d.outdoorTemp);
-    setText('r1t', out!=null ? out.toFixed(1)+' °C' : '—');
-
-    // Compressor Hz — 0 IS a valid reading (means stopped, technician needs
-    // to see that). Only blank when null or out-of-range.
-    const hz = safeHz(d.compressorHz);
-    setText('rps1', hz!=null ? hz : '—');
-    setText('rps2', '—');     // ESP only carries one inverter index right now
-
-    const pin = document.getElementById('env-pin');
-    if(pin){
-      if(hp!=null){
-        const pct = Math.min(100,Math.max(0,((hp/1000-1.0)/(4.5-1.0))*100));
-        pin.style.left = pct+'%';
-        pin.style.opacity = '1';
-      } else {
-        pin.style.opacity = '0.25';
-      }
-    }
-
-    updateError(d);
-  }
-
-  function updateFp(fp){
-    if(!fp||!fp.ready) return;
-    const fam = detectFamily(fp.raw0x00);
-    const meta = FAMILY[fam];
-    const head = document.querySelector('.device-card h3');
-    if(head) head.textContent = meta.label;
-    const metaEl = document.querySelector('.device-card .meta');
-    if(metaEl) metaEl.textContent = meta.hint + ' • ' + (fp.modules||1) + '-modül';
-    const r = fp.raw0x00 || '';
-    const sensors = parseInt(r.substr(0,2),16)||0;
-    const inv     = parseInt(r.substr(2,2),16)||0;
-    const wv      = parseInt(r.substr(10,2),16)||0;
-    const maxIdu  = parseInt(r.substr(16,2),16)||0;
-    const connIdu = parseInt(r.substr(18,2),16)||0;
-    const labels = document.querySelectorAll('.device-card .stat-label');
-    const stats  = document.querySelectorAll('.device-card .stat-val');
-    if(labels[0]) labels[0].textContent='Kompresör';
-    if(stats[0])  stats[0].textContent = inv+' INV';
-    if(labels[1]) labels[1].textContent='Sensör';
-    if(stats[1])  stats[1].textContent = sensors+'';
-    if(labels[2]) labels[2].textContent='İç ünite';
-    if(stats[2])  stats[2].textContent = connIdu+'/'+maxIdu;
-  }
-
-  setInterval(() => {
-    if(lastDataTs>0 && Date.now()-lastDataTs > 10000)
-      document.querySelector('.app')?.classList.add('stale');
-  }, 2000);
-
-  const client = mqtt.connect(BROKER, {
-    clientId:'btsc_'+Math.random().toString(36).slice(2,8),
-    clean:true, reconnectPeriod:3000, connectTimeout:8000,
-  });
-  client.on('connect',  ()=>{ updateConn('ok','MQTT bağlı'); client.subscribe([T_DATA,T_FP]); });
-  client.on('close',    ()=> updateConn('err','Bağlantı yok'));
-  client.on('reconnect',()=> updateConn('warn','Bağlanıyor…'));
-  client.on('message',(t,p)=>{
-    try{
-      const j=JSON.parse(p.toString());
-      if(t===T_FP)       updateFp(j);
-      else if(t===T_DATA) updateData(j);
-    }catch(e){ console.warn('parse',e); }
-  });
-
-  updateError(null);  // initial paint — "Hata yok" until first frame arrives
+render();   // initial paint
 </script>
 
 </body>
